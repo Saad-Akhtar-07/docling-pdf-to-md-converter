@@ -1,11 +1,18 @@
-export default function MarkdownViewer({ markdown, isLoading, copyState, onCopy, onDownload }) {
+export default function MarkdownViewer({
+  markdown,
+  isLoading,
+  copyState,
+  onCopy,
+  onDownload,
+  title = "Markdown Output",
+}) {
   const hasMarkdown = Boolean(markdown);
 
   return (
     <section className="rounded border border-zinc-300 bg-white">
       <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-zinc-950">Markdown Output</h2>
+          <h2 className="text-sm font-semibold text-zinc-950">{title}</h2>
           <p className="text-xs text-zinc-500">{markdown.length.toLocaleString()} characters</p>
         </div>
         <div className="flex flex-wrap gap-2">

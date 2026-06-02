@@ -3,6 +3,7 @@ const statLabels = {
   fileSize: "File size",
   conversionTime: "Conversion time",
   markdownCharacters: "Markdown chars",
+  chunkCount: "Chunks",
   imageCount: "Images/Figures",
   tableCount: "Tables",
 };

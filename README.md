@@ -58,6 +58,11 @@ The proxy is configured in `vite.config.js` and avoids browser CORS issues durin
 6. Click `Convert PDF`.
 7. Review the Markdown, raw JSON, stats, and detected image/figure metadata.
 
+The Markdown output is generated from Docling structured JSON when available. Items are grouped by
+`prov[0].page_no`, producing page markers such as `[Page 1]`. The app also shows a `chunks` array
+with `documentName`, `pageNo`, `type`, `content`, and metadata so you can inspect how each item was
+placed into the page-aware Markdown.
+
 ## Configuration
 
 The Docling base URL is configured in one place:
@@ -92,7 +97,28 @@ Use the default `/docling` proxy. If you changed `VITE_DOCLING_BASE_URL` to `htt
 
 ### Timeout or large file delay
 
-The request timeout is set in `src/utils/doclingApi.js`. Increase `DEFAULT_TIMEOUT_MS` for large slide decks or scanned PDFs.
+If Docling returns `HTTP 504` with `DOCLING_SERVE_MAX_SYNC_WAIT=120`, increase the Docling Serve container wait time.
+
+For Docker:
+
+```bash
+docker run -p 5001:5001 -e DOCLING_SERVE_MAX_SYNC_WAIT=600 your-docling-serve-image
+```
+
+For Docker Compose:
+
+```yaml
+environment:
+  DOCLING_SERVE_MAX_SYNC_WAIT: "600"
+```
+
+The app also has a browser-side timeout:
+
+```text
+VITE_DOCLING_TIMEOUT_MS=600000
+```
+
+This value is in milliseconds, so `600000` means 10 minutes.
 
 ### No Markdown found
 

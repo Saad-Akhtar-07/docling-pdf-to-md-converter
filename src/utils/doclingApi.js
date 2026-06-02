@@ -4,7 +4,7 @@ export const DEFAULT_DOCLING_BASE_URL =
   import.meta.env.VITE_DOCLING_BASE_URL || DOCLING_PROXY_BASE_URL;
 
 const CONVERT_PATH = "/v1/convert/file";
-const DEFAULT_TIMEOUT_MS = 120_000;
+const DEFAULT_TIMEOUT_MS = Number(import.meta.env.VITE_DOCLING_TIMEOUT_MS || 600_000);
 
 function normalizeBaseUrl(baseUrl) {
   return baseUrl.replace(/\/$/, "");
@@ -52,7 +52,7 @@ function buildFormData(file, options) {
 
 function buildErrorMessage(error) {
   if (error.name === "AbortError") {
-    return "The conversion timed out. Large slide PDFs can take a while; try again or increase the timeout in src/utils/doclingApi.js.";
+    return "The browser request timed out. Large slide PDFs can take a while; increase VITE_DOCLING_TIMEOUT_MS and DOCLING_SERVE_MAX_SYNC_WAIT if needed.";
   }
 
   if (error.message?.includes("Failed to fetch")) {

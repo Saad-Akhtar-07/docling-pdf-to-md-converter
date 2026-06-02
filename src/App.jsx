@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
+import ChunksViewer from "./components/ChunksViewer.jsx";
 import ConversionOptions from "./components/ConversionOptions.jsx";
 import FileUploader from "./components/FileUploader.jsx";
 import MarkdownViewer from "./components/MarkdownViewer.jsx";
 import RawJsonViewer from "./components/RawJsonViewer.jsx";
 import StatsPanel from "./components/StatsPanel.jsx";
 import { DEFAULT_DOCLING_BASE_URL, convertPdfWithDocling } from "./utils/doclingApi.js";
-import { postProcessMarkdown } from "./utils/markdownPostProcess.js";
-import { extractMarkdown, extractResponseSummary } from "./utils/responseParser.js";
+import { buildStructuredPageOutput } from "./utils/responseParser.js";
 
 const DEFAULT_OPTIONS = {
   doOcr: true,
@@ -57,6 +57,8 @@ export default function App() {
   const [markdown, setMarkdown] = useState("");
   const [rawResponse, setRawResponse] = useState(null);
   const [markdownSourcePath, setMarkdownSourcePath] = useState("");
+  const [chunks, setChunks] = useState([]);
+  const [warnings, setWarnings] = useState([]);
   const [figures, setFigures] = useState([]);
   const [tableCount, setTableCount] = useState(0);
   const [conversionTimeMs, setConversionTimeMs] = useState(null);
@@ -71,10 +73,11 @@ export default function App() {
       conversionTime:
         typeof conversionTimeMs === "number" ? `${(conversionTimeMs / 1000).toFixed(2)} s` : "-",
       markdownCharacters: markdown.length,
+      chunkCount: chunks.length,
       imageCount: figures.length,
       tableCount,
     }),
-    [conversionTimeMs, figures.length, file, markdown.length, tableCount],
+    [chunks.length, conversionTimeMs, figures.length, file, markdown.length, tableCount],
   );
 
   function handleFileChange(nextFile) {
@@ -84,6 +87,8 @@ export default function App() {
     setMarkdown("");
     setRawResponse(null);
     setMarkdownSourcePath("");
+    setChunks([]);
+    setWarnings([]);
     setFigures([]);
     setTableCount(0);
     setConversionTimeMs(null);
@@ -114,20 +119,22 @@ export default function App() {
       });
 
       const elapsed = performance.now() - startedAt;
-      const markdownMatch = extractMarkdown(response);
-      const processedMarkdown = postProcessMarkdown(markdownMatch.value);
-      const summary = extractResponseSummary(response);
-      const normalizedFigures = prepareFigureSummariesForFutureVision(summary.figures);
+      const structuredOutput = buildStructuredPageOutput(response, file.name);
+      const normalizedFigures = prepareFigureSummariesForFutureVision(structuredOutput.figures);
 
       setRawResponse(response);
-      setMarkdown(processedMarkdown);
-      setMarkdownSourcePath(markdownMatch.sourcePath);
+      setMarkdown(structuredOutput.markdown);
+      setMarkdownSourcePath(structuredOutput.sourcePath);
+      setChunks(structuredOutput.chunks);
+      setWarnings(structuredOutput.warnings);
       setFigures(normalizedFigures);
-      setTableCount(summary.tableCount);
+      setTableCount(structuredOutput.tableCount);
       setConversionTimeMs(elapsed);
 
-      if (!processedMarkdown) {
-        setError("Docling responded successfully, but no Markdown field was found. Inspect the raw JSON below to update the parser.");
+      if (!structuredOutput.markdown) {
+        setError(
+          "Docling responded successfully, but no page-aware content was extracted. Inspect the raw JSON below to update the parser.",
+        );
       }
     } catch (requestError) {
       setError(requestError.message);
@@ -181,6 +188,13 @@ export default function App() {
                 {error}
               </div>
             ) : null}
+            {warnings.length ? (
+              <div className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                {warnings.map((warning) => (
+                  <p key={warning}>{warning}</p>
+                ))}
+              </div>
+            ) : null}
             <StatsPanel stats={stats} markdownSourcePath={markdownSourcePath} />
           </div>
 
@@ -191,6 +205,7 @@ export default function App() {
               copyState={copyState}
               onCopy={handleCopyMarkdown}
               onDownload={() => downloadMarkdown(markdown, file?.name)}
+              title="Page-Aware Markdown"
             />
 
             <section className="rounded border border-zinc-300 bg-white">
@@ -226,6 +241,7 @@ export default function App() {
               )}
             </section>
 
+            <ChunksViewer chunks={chunks} />
             <RawJsonViewer data={rawResponse} />
           </div>
         </section>
