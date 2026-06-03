@@ -164,7 +164,7 @@ function getSelfRef(item) {
   return pickFirst(item.self_ref, item.selfRef, item.ref, item.$ref);
 }
 
-function flattenBodyItems(root, node = root.body, items = [], seen = new WeakSet()) {
+function flattenBodyItems(root, node = root.body, items = [], seen = new WeakSet(), parentType = "") {
   if (!node) return items;
 
   const resolved = node.$ref ? resolveJsonPointer(root, node.$ref) : node;
@@ -173,7 +173,14 @@ function flattenBodyItems(root, node = root.body, items = [], seen = new WeakSet
 
   seen.add(resolved);
 
-  if (resolved !== root.body && (resolved.prov || resolved.text || resolved.data || resolved.image)) {
+  const currentType = getItemType(resolved);
+  const isFigureChildText = parentType === "figure" && currentType === "text";
+
+  if (
+    resolved !== root.body &&
+    !isFigureChildText &&
+    (resolved.prov || resolved.text || resolved.data || resolved.image)
+  ) {
     items.push({
       item: resolved,
       sourcePath: node.$ref || getSelfRef(resolved) || "document.body",
@@ -181,7 +188,7 @@ function flattenBodyItems(root, node = root.body, items = [], seen = new WeakSet
   }
 
   if (Array.isArray(resolved.children)) {
-    resolved.children.forEach((child) => flattenBodyItems(root, child, items, seen));
+    resolved.children.forEach((child) => flattenBodyItems(root, child, items, seen, currentType));
   }
 
   return items;
@@ -353,28 +360,54 @@ function formatTableContent(item) {
   return tableCellsToMarkdown(item.data || item);
 }
 
-function formatFigureContent(item, pageNo) {
+function collectFigureOcrText(root, item, seen = new WeakSet()) {
+  if (!root || !Array.isArray(item.children)) return "";
+
+  return item.children
+    .map((child) => {
+      const resolved = child.$ref ? resolveJsonPointer(root, child.$ref) : child;
+      if (!resolved || typeof resolved !== "object" || seen.has(resolved)) return "";
+
+      seen.add(resolved);
+
+      if (getItemType(resolved) === "text") {
+        return formatTextContent(resolved);
+      }
+
+      return collectFigureOcrText(root, resolved, seen);
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function formatFigureContent(item, pageNo, root) {
   const pageLabel = pageNo || "Unknown";
   const caption = getFigureCaption(item);
   const reference = getFigureReference(item);
+  const ocrText = collectFigureOcrText(root, item);
+  const lines = [`[Figure on Page ${pageLabel}]`];
 
-  return [
-    `[Figure on Page ${pageLabel}]`,
-    caption ? `Caption: ${caption}` : "Caption:",
-    reference ? `Image reference: ${reference}` : "Image reference:",
-    "TODO: send this image to Vision LLM and append summary here.",
-  ].join("\n");
+  if (ocrText) {
+    lines.push("Extracted text from image OCR:", ocrText);
+  }
+
+  lines.push(caption ? `Caption: ${caption}` : "Caption:");
+  lines.push(reference ? `Image reference: ${reference}` : "Image reference:");
+  lines.push("TODO: send this image to Vision LLM only if OCR text is insufficient.");
+
+  return lines.join("\n");
 }
 
-function buildChunk({ item, fallbackType, sourcePath, documentName }) {
+function buildChunk({ item, fallbackType, sourcePath, documentName, root }) {
   const type = getItemType(item, fallbackType);
   const pageNo = getPageNo(item);
   const content =
     type === "table"
       ? formatTableContent(item)
       : type === "figure"
-        ? formatFigureContent(item, pageNo)
+        ? formatFigureContent(item, pageNo, root)
         : formatTextContent(item);
+  const figureOcrText = type === "figure" ? collectFigureOcrText(root, item) : "";
 
   if (!content.trim()) return null;
 
@@ -391,6 +424,7 @@ function buildChunk({ item, fallbackType, sourcePath, documentName }) {
       missingPageNo: !pageNo,
       caption: type === "figure" ? getFigureCaption(item) : undefined,
       imageReference: type === "figure" ? getFigureReference(item) : undefined,
+      imageOcrText: figureOcrText || undefined,
     },
   };
 }
@@ -586,7 +620,7 @@ export function buildStructuredPageOutput(response, documentName = "document") {
   }
 
   const chunks = getOrderedDocumentItems(document)
-    .map((entry) => buildChunk({ ...entry, documentName }))
+    .map((entry) => buildChunk({ ...entry, documentName, root: document }))
     .filter(Boolean);
 
   const figures = chunks
