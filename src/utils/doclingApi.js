@@ -31,7 +31,7 @@ function buildFormData(file, options) {
   formData.append("files", file);
   formData.append("file", file);
 
-  const toFormats = options.outputFormat === "both" ? ["md", "json"] : [options.outputFormat];
+  const toFormats = ["md", "json"];
 
   const payload = {
     to_formats: toFormats,
@@ -39,7 +39,9 @@ function buildFormData(file, options) {
     force_ocr: options.forceOcr,
     do_table_structure: options.doTableStructure,
     table_mode: options.tableMode,
-    image_export_mode: options.imageExportMode,
+    image_export_mode: "embedded",
+    include_images: options.includeImages,
+    images_scale: options.imagesScale,
   };
 
   Object.entries(payload).forEach(([key, value]) => appendFormValue(formData, key, value));

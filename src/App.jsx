@@ -2,19 +2,27 @@ import { useMemo, useState } from "react";
 import ChunksViewer from "./components/ChunksViewer.jsx";
 import ConversionOptions from "./components/ConversionOptions.jsx";
 import FileUploader from "./components/FileUploader.jsx";
+import ImageDebugPanel from "./components/ImageDebugPanel.jsx";
 import MarkdownViewer from "./components/MarkdownViewer.jsx";
 import RawJsonViewer from "./components/RawJsonViewer.jsx";
 import StatsPanel from "./components/StatsPanel.jsx";
 import { DEFAULT_DOCLING_BASE_URL, convertPdfWithDocling } from "./utils/doclingApi.js";
+import {
+  DEFAULT_VISION_FILTERS,
+  appendKeptImagesToMarkdown,
+  extractEmbeddedImages,
+} from "./utils/imagePipeline.js";
 import { buildStructuredPageOutput } from "./utils/responseParser.js";
 
 const DEFAULT_OPTIONS = {
   doOcr: true,
-  forceOcr: false,
+  forceOcr: true,
   doTableStructure: true,
   tableMode: "accurate",
   outputFormat: "both",
   imageExportMode: "embedded",
+  includeImages: true,
+  imagesScale: 2,
 };
 
 function formatFileSize(bytes) {
@@ -28,7 +36,7 @@ function formatFileSize(bytes) {
 }
 
 function downloadMarkdown(markdown, fileName) {
-  const baseName = fileName?.replace(/\.pdf$/i, "") || "docling-output";
+  const baseName = fileName?.replace(/\.pdf$/i, "") || "slidevision-output";
   const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -60,11 +68,23 @@ export default function App() {
   const [chunks, setChunks] = useState([]);
   const [warnings, setWarnings] = useState([]);
   const [figures, setFigures] = useState([]);
+  const [debugImages, setDebugImages] = useState([]);
+  const [imageDecisions, setImageDecisions] = useState([]);
+  const [imageFilters, setImageFilters] = useState(DEFAULT_VISION_FILTERS);
   const [tableCount, setTableCount] = useState(0);
   const [conversionTimeMs, setConversionTimeMs] = useState(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [copyState, setCopyState] = useState("idle");
+
+  const finalMarkdown = useMemo(
+    () => appendKeptImagesToMarkdown(markdown, imageDecisions),
+    [imageDecisions, markdown],
+  );
+  const visionCandidateCount = useMemo(
+    () => imageDecisions.filter((decision) => decision.isKept).length,
+    [imageDecisions],
+  );
 
   const stats = useMemo(
     () => ({
@@ -72,12 +92,21 @@ export default function App() {
       fileSize: file ? formatFileSize(file.size) : "-",
       conversionTime:
         typeof conversionTimeMs === "number" ? `${(conversionTimeMs / 1000).toFixed(2)} s` : "-",
-      markdownCharacters: markdown.length,
+      markdownCharacters: finalMarkdown.length,
       chunkCount: chunks.length,
       imageCount: figures.length,
+      visionCandidateCount,
       tableCount,
     }),
-    [chunks.length, conversionTimeMs, figures.length, file, markdown.length, tableCount],
+    [
+      chunks.length,
+      conversionTimeMs,
+      figures.length,
+      file,
+      finalMarkdown.length,
+      tableCount,
+      visionCandidateCount,
+    ],
   );
 
   function handleFileChange(nextFile) {
@@ -90,6 +119,8 @@ export default function App() {
     setChunks([]);
     setWarnings([]);
     setFigures([]);
+    setDebugImages([]);
+    setImageDecisions([]);
     setTableCount(0);
     setConversionTimeMs(null);
   }
@@ -121,6 +152,7 @@ export default function App() {
       const elapsed = performance.now() - startedAt;
       const structuredOutput = buildStructuredPageOutput(response, file.name);
       const normalizedFigures = prepareFigureSummariesForFutureVision(structuredOutput.figures);
+      const embeddedImages = extractEmbeddedImages(response);
 
       setRawResponse(response);
       setMarkdown(structuredOutput.markdown);
@@ -128,6 +160,8 @@ export default function App() {
       setChunks(structuredOutput.chunks);
       setWarnings(structuredOutput.warnings);
       setFigures(normalizedFigures);
+      setDebugImages(embeddedImages);
+      setImageDecisions([]);
       setTableCount(structuredOutput.tableCount);
       setConversionTimeMs(elapsed);
 
@@ -145,10 +179,10 @@ export default function App() {
   }
 
   async function handleCopyMarkdown() {
-    if (!markdown) return;
+    if (!finalMarkdown) return;
 
     try {
-      await navigator.clipboard.writeText(markdown);
+      await navigator.clipboard.writeText(finalMarkdown);
       setCopyState("copied");
       window.setTimeout(() => setCopyState("idle"), 1500);
     } catch {
@@ -161,9 +195,9 @@ export default function App() {
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-3 border-b border-zinc-300 pb-5 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-sm font-medium text-teal-700">Docling Serve tester</p>
+            <p className="text-sm font-medium text-teal-700">SlideVision pipeline</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-normal text-zinc-950">
-              PDF to Markdown Processor
+              SlideVision Markdown Extractor
             </h1>
           </div>
           <div className="rounded border border-zinc-300 bg-white px-3 py-2 font-mono text-xs text-zinc-700">
@@ -181,7 +215,7 @@ export default function App() {
               disabled={isLoading}
               className="inline-flex h-11 items-center justify-center rounded bg-teal-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
             >
-              {isLoading ? "Converting..." : "Convert PDF"}
+              {isLoading ? "Extracting..." : "Extract Slides"}
             </button>
             {error ? (
               <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -200,17 +234,17 @@ export default function App() {
 
           <div className="flex min-w-0 flex-col gap-5">
             <MarkdownViewer
-              markdown={markdown}
+              markdown={finalMarkdown}
               isLoading={isLoading}
               copyState={copyState}
               onCopy={handleCopyMarkdown}
-              onDownload={() => downloadMarkdown(markdown, file?.name)}
-              title="Page-Aware Markdown"
+              onDownload={() => downloadMarkdown(finalMarkdown, file?.name)}
+              title="Slide-Aware Markdown"
             />
 
             <section className="rounded border border-zinc-300 bg-white">
               <div className="border-b border-zinc-200 px-4 py-3">
-                <h2 className="text-sm font-semibold text-zinc-950">Images and Figures</h2>
+                <h2 className="text-sm font-semibold text-zinc-950">Docling Figure References</h2>
               </div>
               {figures.length ? (
                 <div className="divide-y divide-zinc-200">
@@ -240,6 +274,13 @@ export default function App() {
                 <p className="px-4 py-5 text-sm text-zinc-600">No image or figure entries detected.</p>
               )}
             </section>
+
+            <ImageDebugPanel
+              images={debugImages}
+              filters={imageFilters}
+              onFiltersChange={setImageFilters}
+              onDecisionsChange={setImageDecisions}
+            />
 
             <ChunksViewer chunks={chunks} />
             <RawJsonViewer data={rawResponse} />

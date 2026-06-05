@@ -4,7 +4,8 @@ const statLabels = {
   conversionTime: "Conversion time",
   markdownCharacters: "Markdown chars",
   chunkCount: "Chunks",
-  imageCount: "Images/Figures",
+  imageCount: "Docling figures",
+  visionCandidateCount: "Vision pages",
   tableCount: "Tables",
 };
 
@@ -12,7 +13,7 @@ export default function StatsPanel({ stats, markdownSourcePath }) {
   return (
     <section className="rounded border border-zinc-300 bg-white">
       <div className="border-b border-zinc-200 px-4 py-3">
-        <h2 className="text-sm font-semibold text-zinc-950">Conversion Stats</h2>
+        <h2 className="text-sm font-semibold text-zinc-950">Extraction Stats</h2>
       </div>
       <dl className="grid gap-2 px-4 py-3 text-sm">
         {Object.entries(stats).map(([key, value]) => (

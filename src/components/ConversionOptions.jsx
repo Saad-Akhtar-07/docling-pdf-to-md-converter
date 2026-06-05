@@ -1,10 +1,4 @@
 const tableModes = ["accurate", "fast"];
-const outputFormats = [
-  { value: "both", label: "Markdown + JSON" },
-  { value: "md", label: "Markdown" },
-  { value: "json", label: "JSON" },
-];
-const imageExportModes = ["embedded", "referenced", "placeholder"];
 
 function CheckboxRow({ id, label, checked, disabled, onChange }) {
   return (
@@ -48,6 +42,24 @@ function SelectRow({ id, label, value, disabled, options, onChange }) {
   );
 }
 
+function NumberRow({ id, label, value, disabled, min, step = 1, onChange }) {
+  return (
+    <label htmlFor={id} className="grid gap-1 py-2">
+      <span className="text-sm font-medium text-zinc-800">{label}</span>
+      <input
+        id={id}
+        type="number"
+        min={min}
+        step={step}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="h-10 rounded border border-zinc-300 bg-white px-3 text-sm text-zinc-950 shadow-sm focus:border-teal-700 focus:outline-none focus:ring-1 focus:ring-teal-700 disabled:bg-zinc-100"
+      />
+    </label>
+  );
+}
+
 export default function ConversionOptions({ options, onChange, disabled }) {
   function updateOption(key, value) {
     onChange({ ...options, [key]: value });
@@ -68,7 +80,7 @@ export default function ConversionOptions({ options, onChange, disabled }) {
         />
         <CheckboxRow
           id="force-ocr"
-          label="Force OCR"
+          label="Force visual OCR"
           checked={options.forceOcr}
           disabled={disabled}
           onChange={(value) => updateOption("forceOcr", value)}
@@ -88,21 +100,21 @@ export default function ConversionOptions({ options, onChange, disabled }) {
           options={tableModes}
           onChange={(value) => updateOption("tableMode", value)}
         />
-        <SelectRow
-          id="output-format"
-          label="Output format"
-          value={options.outputFormat}
+        <CheckboxRow
+          id="include-images"
+          label="Include images"
+          checked={options.includeImages}
           disabled={disabled}
-          options={outputFormats}
-          onChange={(value) => updateOption("outputFormat", value)}
+          onChange={(value) => updateOption("includeImages", value)}
         />
-        <SelectRow
-          id="image-export-mode"
-          label="Image export mode"
-          value={options.imageExportMode}
-          disabled={disabled}
-          options={imageExportModes}
-          onChange={(value) => updateOption("imageExportMode", value)}
+        <NumberRow
+          id="images-scale"
+          label="Images scale"
+          value={options.imagesScale}
+          min={0.5}
+          step={0.5}
+          disabled={disabled || !options.includeImages}
+          onChange={(value) => updateOption("imagesScale", value)}
         />
       </div>
     </section>

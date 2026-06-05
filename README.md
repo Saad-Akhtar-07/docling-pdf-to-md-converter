@@ -1,6 +1,57 @@
-# PDF to Markdown Processor
+# SlideVision Markdown Extractor
 
-A small React + Vite + Tailwind app for testing Docling Serve PDF-to-Markdown conversion. It uploads a local PDF, calls Docling Serve, extracts Markdown defensively from the response, and keeps the raw JSON visible for parser inspection.
+A React + Vite + Tailwind app for turning slide PDFs into page-aware Markdown for downstream
+text and Vision LLM pipelines.
+
+The app uses Docling Serve to extract OCR/text/table content, keeps each slide/page separated, and
+embeds full-page slide images only for pages that Docling identifies as useful Vision candidates.
+This helps avoid sending plain text slides to a Vision model while preserving diagrams, charts,
+architecture figures, and other visual regions that OCR may not describe well.
+
+## What It Produces
+
+The downloaded Markdown is organized by slide/page:
+
+```md
+[Page 4]
+
+OCR/text content extracted by Docling...
+
+### Vision Image
+Picture regions: 1, picture area: 36.95%, residual score: 20.57%
+
+![Page 4 vision image 1](data:image/png;base64,...)
+```
+
+Pages without a `Send to Vision` decision include text only.
+
+## Core Pipeline
+
+```text
+PDF slide deck
+-> Docling Serve OCR/table/layout extraction
+-> embedded full-page slide images
+-> Docling picture-region scoring
+-> page-aware Markdown
+-> optional Vision LLM step for selected pages
+```
+
+The app intentionally uses:
+
+```text
+to_formats: ["md", "json"]
+image_export_mode: "embedded"
+include_images: true
+force_ocr: true by default
+```
+
+Referenced and placeholder image modes are not used because the downstream Vision pipeline needs
+direct image bytes.
+
+`Force visual OCR` is enabled by default because some slide PDFs contain broken embedded text
+layers or custom font encodings. In those files, normal PDF text extraction can produce garbled
+output even though the slide looks correct. Forced OCR asks Docling to read the rendered slide
+visually instead.
 
 ## Requirements
 
@@ -26,13 +77,7 @@ Open the Vite URL shown in the terminal, usually:
 http://localhost:5173
 ```
 
-## Make Sure Docling Serve Is Running
-
-Start your Docling Serve Docker container so the API is reachable on:
-
-```text
-http://localhost:5001
-```
+## Docling Serve
 
 The app calls:
 
@@ -46,32 +91,13 @@ through the Vite proxy:
 /docling/v1/convert/file
 ```
 
-The proxy is configured in `vite.config.js` and avoids browser CORS issues during development.
+The Docling base URL is configured in:
 
-## Test With A PDF
-
-1. Start Docling Serve.
-2. Run `npm run dev`.
-3. Open the app.
-4. Choose or drop a `.pdf` file.
-5. Adjust OCR, table, format, and image export options.
-6. Click `Convert PDF`.
-7. Review the Markdown, raw JSON, stats, and detected image/figure metadata.
-
-The Markdown output is generated from Docling structured JSON when available. Items are grouped by
-`prov[0].page_no`, producing page markers such as `[Page 1]`. The app also shows a `chunks` array
-with `documentName`, `pageNo`, `type`, `content`, and metadata so you can inspect how each item was
-placed into the page-aware Markdown.
-
-## Configuration
-
-The Docling base URL is configured in one place:
-
-```js
+```text
 src/utils/doclingApi.js
 ```
 
-By default it uses the Vite proxy:
+By default it uses:
 
 ```text
 VITE_DOCLING_BASE_URL=/docling
@@ -85,48 +111,71 @@ VITE_DOCLING_BASE_URL=http://localhost:5001
 
 Restart the Vite dev server after changing environment variables.
 
+## Vision Candidate Logic
+
+The `Vision Candidate Pages` panel shows every embedded page image and whether it will be included
+in the final Markdown.
+
+Default decision filters:
+
+```js
+minPictureBoxes: 1
+minPictureAreaPercent: 10
+maxRepeatCount: 1
+enableResidualFallback: false
+```
+
+Meaning:
+
+```text
+Send to Vision if Docling detected at least one picture/figure region covering 10% or more
+of the slide image, unless the exact page image is repeated.
+```
+
+The panel also shows:
+
+```text
+original page image
+text-masked debug image
+picture box overlay
+picture area %
+residual score
+edge score
+skip/send reason
+```
+
+The text-masked preview is diagnostic only by default. The main decision uses Docling layout
+picture regions because they are more reliable for slide decks than raw OCR masking.
+
 ## Common Issues
+
+### Garbled text output
+
+If text looks like shifted or nonsense characters, keep `Force visual OCR` enabled and run the
+extraction again. That usually means the PDF text layer is bad, not that the visible slide text is
+unreadable.
 
 ### Docling server offline
 
-If conversion fails with a network error, confirm Docker is running and Docling Serve is listening on `http://localhost:5001`.
+Confirm Docker is running and Docling Serve is listening on `http://localhost:5001`.
 
 ### CORS error
 
-Use the default `/docling` proxy. If you changed `VITE_DOCLING_BASE_URL` to `http://localhost:5001`, switch it back to `/docling` during Vite development.
+Use the default `/docling` proxy during Vite development.
 
 ### Timeout or large file delay
 
-If Docling returns `HTTP 504` with `DOCLING_SERVE_MAX_SYNC_WAIT=120`, increase the Docling Serve container wait time.
-
-For Docker:
+If Docling returns `HTTP 504`, increase the Docling Serve wait time:
 
 ```bash
 docker run -p 5001:5001 -e DOCLING_SERVE_MAX_SYNC_WAIT=600 your-docling-serve-image
 ```
 
-For Docker Compose:
-
-```yaml
-environment:
-  DOCLING_SERVE_MAX_SYNC_WAIT: "600"
-```
-
-The app also has a browser-side timeout:
+The browser-side timeout can also be adjusted:
 
 ```text
 VITE_DOCLING_TIMEOUT_MS=600000
 ```
-
-This value is in milliseconds, so `600000` means 10 minutes.
-
-### No Markdown found
-
-Docling response shapes can vary. The full raw JSON response is displayed so you can inspect it and update `src/utils/responseParser.js` with the correct Markdown path.
-
-### Image export mode unsupported
-
-Different Docling Serve versions may support different image export modes. Try `embedded` first, then `referenced`.
 
 ## Build
 
