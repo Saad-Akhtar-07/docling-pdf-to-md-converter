@@ -27,6 +27,7 @@ Pages without a `Send to Vision` decision include text only.
 
 ## Core Pipeline
 
+<<<<<<< HEAD
 **PDF files** go directly to Docling Serve:
 
 ```text
@@ -50,6 +51,17 @@ PPT / PPTX
 Gotenberg converts the presentation to a pixel-perfect PDF using LibreOffice so
 that Docling can run its normal OCR and layout pipeline on the rendered slides.
 
+=======
+```text
+PDF slide deck
+-> Docling Serve OCR/table/layout extraction
+-> embedded full-page slide images
+-> Docling picture-region scoring
+-> page-aware Markdown
+-> optional Vision LLM step for selected pages
+```
+
+>>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
 The app intentionally uses:
 
 ```text
@@ -71,8 +83,11 @@ visually instead.
 
 - Node.js 18+
 - npm
+<<<<<<< HEAD
 - **Docker** (for Gotenberg and Docling Serve)
 - Gotenberg running at `http://localhost:3000`
+=======
+>>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
 - Docling Serve running at `http://localhost:5001`
 
 ## Install
@@ -93,6 +108,7 @@ Open the Vite URL shown in the terminal, usually:
 http://localhost:5173
 ```
 
+<<<<<<< HEAD
 ## Gotenberg (required for PowerPoint files)
 
 Gotenberg converts PPT / PPTX files to PDF using LibreOffice before they are
@@ -111,6 +127,8 @@ To stop and remove the container when you no longer need it:
 docker stop gotenberg && docker rm gotenberg
 ```
 
+=======
+>>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
 ## Docling Serve
 
 The app calls:

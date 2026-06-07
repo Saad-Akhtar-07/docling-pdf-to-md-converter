@@ -10,10 +10,13 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/docling/, ""),
       },
+<<<<<<< HEAD
       "/api": {
         target: "http://localhost:3001",
         changeOrigin: true,
       },
+=======
+>>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
     },
   },
 });

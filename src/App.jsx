@@ -7,7 +7,10 @@ import MarkdownViewer from "./components/MarkdownViewer.jsx";
 import RawJsonViewer from "./components/RawJsonViewer.jsx";
 import StatsPanel from "./components/StatsPanel.jsx";
 import { DEFAULT_DOCLING_BASE_URL, convertPdfWithDocling } from "./utils/doclingApi.js";
+<<<<<<< HEAD
 import { convertPptWithServer } from "./utils/pptApi.js";
+=======
+>>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
 import {
   DEFAULT_VISION_FILTERS,
   appendKeptImagesToMarkdown,
@@ -131,6 +134,7 @@ export default function App() {
     setCopyState("idle");
 
     if (!file) {
+<<<<<<< HEAD
       setError("Select a file before converting.");
       return;
     }
@@ -141,6 +145,14 @@ export default function App() {
 
     if (!isPdf && !isPpt) {
       setError("Only PDF or PowerPoint files are supported.");
+=======
+      setError("Select a PDF file before converting.");
+      return;
+    }
+
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      setError("Only PDF files are supported.");
+>>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
       return;
     }
 
@@ -148,9 +160,17 @@ export default function App() {
     const startedAt = performance.now();
 
     try {
+<<<<<<< HEAD
       const response = isPdf
         ? await convertPdfWithDocling({ file, options, baseUrl: DEFAULT_DOCLING_BASE_URL })
         : await convertPptWithServer({ file, options });
+=======
+      const response = await convertPdfWithDocling({
+        file,
+        options,
+        baseUrl: DEFAULT_DOCLING_BASE_URL,
+      });
+>>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
 
       const elapsed = performance.now() - startedAt;
       const structuredOutput = buildStructuredPageOutput(response, file.name);

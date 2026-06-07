@@ -123,6 +123,7 @@ function parseJsonIfPossible(value) {
   }
 }
 
+<<<<<<< HEAD
 /**
  * Returns true when `parsed` looks like a DoclingDocument — i.e. it has at
  * least one of the well-known structural keys produced by Docling Serve.
@@ -162,13 +163,29 @@ function findStructuredDocument(response) {
     "formats.json",
     "data.document",
     "data",
+=======
+function findStructuredDocument(response) {
+  const commonPaths = [
+    "result.document",
+    "document",
+    "result",
+    "result.document.json_content",
+    "document.json_content",
+    "json_content",
+    "result.json",
+    "json",
+>>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
   ];
 
   for (const path of commonPaths) {
     const value = getPathValue(response, path);
     const parsed = parseJsonIfPossible(value);
 
+<<<<<<< HEAD
     if (isDoclingDocument(parsed)) {
+=======
+    if (parsed && (parsed.body || parsed.texts || parsed.tables || parsed.pictures)) {
+>>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
       return { document: parsed, sourcePath: path };
     }
   }
