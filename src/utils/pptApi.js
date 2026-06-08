@@ -1,29 +1,31 @@
-export async function convertPptWithServer({ file, options, endpoint = "/api/convert-ppt" }) {
+export const GOTENBERG_PROXY_BASE_URL = "/gotenberg";
+export const DEFAULT_GOTENBERG_BASE_URL =
+  import.meta.env.VITE_GOTENBERG_BASE_URL || GOTENBERG_PROXY_BASE_URL;
+
+const CONVERT_PATH = "/forms/libreoffice/convert";
+
+function normalizeBaseUrl(baseUrl) {
+  return baseUrl.replace(/\/$/, "");
+}
+
+function buildPdfFileName(fileName) {
+  return fileName.replace(/\.(pptx?|odp)$/i, "") + ".pdf";
+}
+
+export async function convertPptToPdf({ file, baseUrl = DEFAULT_GOTENBERG_BASE_URL }) {
   const form = new FormData();
-  form.append("file", file, file.name);
+  form.append("files", file, file.name);
 
-  if (options) {
-    try {
-      form.append("options", JSON.stringify({
-        to_formats: ["md", "json"],
-        do_ocr: options.doOcr,
-        force_ocr: options.forceOcr,
-        do_table_structure: options.doTableStructure,
-        table_mode: options.tableMode,
-        image_export_mode: "embedded",
-        include_images: options.includeImages,
-        images_scale: options.imagesScale,
-      }));
-    } catch {}
+  const response = await fetch(`${normalizeBaseUrl(baseUrl)}${CONVERT_PATH}`, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`PowerPoint to PDF conversion failed: ${text}`);
   }
 
-  const resp = await fetch(endpoint, { method: "POST", body: form });
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Server conversion failed: ${text}`);
-  }
-
-  const contentType = resp.headers.get("content-type") || "";
-  const body = contentType.includes("application/json") ? await resp.json() : await resp.text();
-  return body;
+  const pdfBlob = await response.blob();
+  return new File([pdfBlob], buildPdfFileName(file.name), { type: "application/pdf" });
 }

@@ -7,10 +7,7 @@ import MarkdownViewer from "./components/MarkdownViewer.jsx";
 import RawJsonViewer from "./components/RawJsonViewer.jsx";
 import StatsPanel from "./components/StatsPanel.jsx";
 import { DEFAULT_DOCLING_BASE_URL, convertPdfWithDocling } from "./utils/doclingApi.js";
-<<<<<<< HEAD
-import { convertPptWithServer } from "./utils/pptApi.js";
-=======
->>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
+import { DEFAULT_GOTENBERG_BASE_URL, convertPptToPdf } from "./utils/pptApi.js";
 import {
   DEFAULT_VISION_FILTERS,
   appendKeptImagesToMarkdown,
@@ -40,7 +37,7 @@ function formatFileSize(bytes) {
 }
 
 function downloadMarkdown(markdown, fileName) {
-  const baseName = fileName?.replace(/\.pdf$/i, "") || "slidevision-output";
+  const baseName = fileName?.replace(/\.(pdf|pptx?)$/i, "") || "slidevision-output";
   const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -79,6 +76,7 @@ export default function App() {
   const [conversionTimeMs, setConversionTimeMs] = useState(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [conversionStage, setConversionStage] = useState("");
   const [copyState, setCopyState] = useState("idle");
 
   const finalMarkdown = useMemo(
@@ -127,32 +125,29 @@ export default function App() {
     setImageDecisions([]);
     setTableCount(0);
     setConversionTimeMs(null);
+    setConversionStage("");
   }
 
   async function handleConvert() {
     setError("");
     setCopyState("idle");
+    setConversionStage("");
 
     if (!file) {
-<<<<<<< HEAD
       setError("Select a file before converting.");
       return;
     }
 
     const lower = file.name.toLowerCase();
     const isPdf = file.type === "application/pdf" || lower.endsWith(".pdf");
-    const isPpt = lower.endsWith(".ppt") || lower.endsWith(".pptx") || file.type === "application/vnd.ms-powerpoint" || file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    const isPpt =
+      lower.endsWith(".ppt") ||
+      lower.endsWith(".pptx") ||
+      file.type === "application/vnd.ms-powerpoint" ||
+      file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
     if (!isPdf && !isPpt) {
       setError("Only PDF or PowerPoint files are supported.");
-=======
-      setError("Select a PDF file before converting.");
-      return;
-    }
-
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      setError("Only PDF files are supported.");
->>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
       return;
     }
 
@@ -160,17 +155,14 @@ export default function App() {
     const startedAt = performance.now();
 
     try {
-<<<<<<< HEAD
-      const response = isPdf
-        ? await convertPdfWithDocling({ file, options, baseUrl: DEFAULT_DOCLING_BASE_URL })
-        : await convertPptWithServer({ file, options });
-=======
+      setConversionStage(isPpt ? "Converting PowerPoint to PDF..." : "Sending PDF to Docling...");
+      const pdfFile = isPpt ? await convertPptToPdf({ file }) : file;
+      setConversionStage("Extracting Markdown with Docling...");
       const response = await convertPdfWithDocling({
-        file,
+        file: pdfFile,
         options,
         baseUrl: DEFAULT_DOCLING_BASE_URL,
       });
->>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
 
       const elapsed = performance.now() - startedAt;
       const structuredOutput = buildStructuredPageOutput(response, file.name);
@@ -198,6 +190,7 @@ export default function App() {
       setConversionTimeMs(performance.now() - startedAt);
     } finally {
       setIsLoading(false);
+      setConversionStage("");
     }
   }
 
@@ -225,6 +218,8 @@ export default function App() {
           </div>
           <div className="rounded border border-zinc-300 bg-white px-3 py-2 font-mono text-xs text-zinc-700">
             {DEFAULT_DOCLING_BASE_URL}/v1/convert/file
+            <br />
+            {DEFAULT_GOTENBERG_BASE_URL}/forms/libreoffice/convert
           </div>
         </header>
 
@@ -240,6 +235,11 @@ export default function App() {
             >
               {isLoading ? "Extracting..." : "Extract Slides"}
             </button>
+            {conversionStage ? (
+              <div className="rounded border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                {conversionStage}
+              </div>
+            ) : null}
             {error ? (
               <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
                 {error}

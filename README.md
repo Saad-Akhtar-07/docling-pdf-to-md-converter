@@ -27,31 +27,8 @@ Pages without a `Send to Vision` decision include text only.
 
 ## Core Pipeline
 
-<<<<<<< HEAD
-**PDF files** go directly to Docling Serve:
+PDF files go directly to Docling Serve:
 
-```text
-PDF slide deck
-  → Docling Serve OCR/table/layout extraction
-  → embedded full-page slide images
-  → Docling picture-region scoring
-  → page-aware Markdown
-  → optional Vision LLM step for selected pages
-```
-
-**PowerPoint files** (.ppt / .pptx) go through an extra conversion step first:
-
-```text
-PPT / PPTX
-  → Gotenberg (LibreOffice headless) → PDF
-  → Docling Serve structured JSON + Markdown extraction
-  → page-aware Markdown
-```
-
-Gotenberg converts the presentation to a pixel-perfect PDF using LibreOffice so
-that Docling can run its normal OCR and layout pipeline on the rendered slides.
-
-=======
 ```text
 PDF slide deck
 -> Docling Serve OCR/table/layout extraction
@@ -61,7 +38,19 @@ PDF slide deck
 -> optional Vision LLM step for selected pages
 ```
 
->>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
+PowerPoint files (`.ppt` / `.pptx`) go through one extra conversion step first:
+
+```text
+PPT / PPTX
+-> Gotenberg (LibreOffice headless)
+-> PDF
+-> existing Docling Serve pipeline
+-> page-aware Markdown
+```
+
+Gotenberg converts the presentation to PDF using LibreOffice. The app then wraps that PDF as a
+browser `File` and sends it through the same Docling flow used by normal PDF uploads.
+
 The app intentionally uses:
 
 ```text
@@ -83,12 +72,9 @@ visually instead.
 
 - Node.js 18+
 - npm
-<<<<<<< HEAD
-- **Docker** (for Gotenberg and Docling Serve)
-- Gotenberg running at `http://localhost:3000`
-=======
->>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
+- Docker, for Docling Serve and Gotenberg
 - Docling Serve running at `http://localhost:5001`
+- Gotenberg running at `http://localhost:3000` for PowerPoint uploads
 
 ## Install
 
@@ -108,18 +94,15 @@ Open the Vite URL shown in the terminal, usually:
 http://localhost:5173
 ```
 
-<<<<<<< HEAD
-## Gotenberg (required for PowerPoint files)
+## Gotenberg
 
-Gotenberg converts PPT / PPTX files to PDF using LibreOffice before they are
-passed to Docling. Start it with:
+Gotenberg is required only for PowerPoint files. Start it with:
 
 ```bash
 docker run -d --name gotenberg -p 3000:3000 gotenberg/gotenberg:8
 ```
 
-> **Note:** Gotenberg only needs to be running when you upload PowerPoint files.
-> PDF files are sent directly to Docling and do not use Gotenberg.
+PDF files are sent directly to Docling and do not use Gotenberg.
 
 To stop and remove the container when you no longer need it:
 
@@ -127,8 +110,18 @@ To stop and remove the container when you no longer need it:
 docker stop gotenberg && docker rm gotenberg
 ```
 
-=======
->>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
+During Vite development, PowerPoint conversion is called through:
+
+```text
+/gotenberg/forms/libreoffice/convert
+```
+
+The proxy target is configured in:
+
+```text
+vite.config.js
+```
+
 ## Docling Serve
 
 The app calls:
@@ -211,9 +204,13 @@ unreadable.
 
 Confirm Docker is running and Docling Serve is listening on `http://localhost:5001`.
 
+### Gotenberg server offline
+
+PowerPoint uploads require Gotenberg at `http://localhost:3000`.
+
 ### CORS error
 
-Use the default `/docling` proxy during Vite development.
+Use the default `/docling` and `/gotenberg` proxies during Vite development.
 
 ### Timeout or large file delay
 

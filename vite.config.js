@@ -10,13 +10,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/docling/, ""),
       },
-<<<<<<< HEAD
-      "/api": {
-        target: "http://localhost:3001",
+      "/gotenberg": {
+        target: "http://localhost:3000",
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/gotenberg/, ""),
       },
-=======
->>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
     },
   },
 });

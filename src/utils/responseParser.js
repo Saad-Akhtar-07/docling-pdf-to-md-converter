@@ -123,9 +123,8 @@ function parseJsonIfPossible(value) {
   }
 }
 
-<<<<<<< HEAD
 /**
- * Returns true when `parsed` looks like a DoclingDocument — i.e. it has at
+ * Returns true when `parsed` looks like a DoclingDocument, i.e. it has at
  * least one of the well-known structural keys produced by Docling Serve.
  * Image-only PPT decks yield documents that may only have `pictures` or carry
  * a `schema_name` marker with no `texts` array, so we check all known keys.
@@ -140,8 +139,8 @@ function isDoclingDocument(parsed) {
     parsed.pictures ||
     parsed.figures ||
     parsed.pages ||
-    parsed.schema_name ||   // DoclingDocument schema marker
-    parsed.name             // top-level document name field
+    parsed.schema_name ||
+    parsed.name
   );
 }
 
@@ -149,7 +148,7 @@ function findStructuredDocument(response) {
   // Ordered from most-specific to least-specific paths.
   // Covers standard Docling Serve, older builds, and possible future shapes.
   const commonPaths = [
-    "document.json_content",     // standard: { document: { md_content, json_content: {...} } }
+    "document.json_content",
     "result.document.json_content",
     "result.document",
     "document",
@@ -163,29 +162,13 @@ function findStructuredDocument(response) {
     "formats.json",
     "data.document",
     "data",
-=======
-function findStructuredDocument(response) {
-  const commonPaths = [
-    "result.document",
-    "document",
-    "result",
-    "result.document.json_content",
-    "document.json_content",
-    "json_content",
-    "result.json",
-    "json",
->>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
   ];
 
   for (const path of commonPaths) {
     const value = getPathValue(response, path);
     const parsed = parseJsonIfPossible(value);
 
-<<<<<<< HEAD
     if (isDoclingDocument(parsed)) {
-=======
-    if (parsed && (parsed.body || parsed.texts || parsed.tables || parsed.pictures)) {
->>>>>>> 3a405dd557e8516741103ff68021fac68d9494dd
       return { document: parsed, sourcePath: path };
     }
   }
