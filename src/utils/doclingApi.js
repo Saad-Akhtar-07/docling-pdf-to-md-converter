@@ -6,6 +6,15 @@ export const DEFAULT_DOCLING_BASE_URL =
 const CONVERT_PATH = "/v1/convert/file";
 const DEFAULT_TIMEOUT_MS = Number(import.meta.env.VITE_DOCLING_TIMEOUT_MS || 600_000);
 
+export const SERVICE_CONVERSION_OPTIONS = {
+  doOcr: true,
+  forceOcr: true,
+  doTableStructure: true,
+  tableMode: "accurate",
+  includeImages: true,
+  imagesScale: 2,
+};
+
 function normalizeBaseUrl(baseUrl) {
   return baseUrl.replace(/\/$/, "");
 }
@@ -26,7 +35,7 @@ function appendFormValue(formData, key, value) {
   }
 }
 
-function buildFormData(file, options) {
+function buildFormData(file) {
   const formData = new FormData();
   formData.append("files", file);
   formData.append("file", file);
@@ -35,13 +44,13 @@ function buildFormData(file, options) {
 
   const payload = {
     to_formats: toFormats,
-    do_ocr: options.doOcr,
-    force_ocr: options.forceOcr,
-    do_table_structure: options.doTableStructure,
-    table_mode: options.tableMode,
+    do_ocr: SERVICE_CONVERSION_OPTIONS.doOcr,
+    force_ocr: SERVICE_CONVERSION_OPTIONS.forceOcr,
+    do_table_structure: SERVICE_CONVERSION_OPTIONS.doTableStructure,
+    table_mode: SERVICE_CONVERSION_OPTIONS.tableMode,
     image_export_mode: "embedded",
-    include_images: options.includeImages,
-    images_scale: options.imagesScale,
+    include_images: SERVICE_CONVERSION_OPTIONS.includeImages,
+    images_scale: SERVICE_CONVERSION_OPTIONS.imagesScale,
   };
 
   Object.entries(payload).forEach(([key, value]) => appendFormValue(formData, key, value));
@@ -66,7 +75,6 @@ function buildErrorMessage(error) {
 
 export async function convertPdfWithDocling({
   file,
-  options,
   baseUrl = DEFAULT_DOCLING_BASE_URL,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }) {
@@ -76,7 +84,7 @@ export async function convertPdfWithDocling({
   try {
     const response = await fetch(`${normalizeBaseUrl(baseUrl)}${CONVERT_PATH}`, {
       method: "POST",
-      body: buildFormData(file, options),
+      body: buildFormData(file),
       signal: controller.signal,
     });
 

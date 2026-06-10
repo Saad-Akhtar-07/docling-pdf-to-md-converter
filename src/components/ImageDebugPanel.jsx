@@ -6,38 +6,6 @@ const percentFormatter = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
 });
 
-function NumberInput({ id, label, value, min, step = 1, onChange }) {
-  return (
-    <label htmlFor={id} className="grid gap-1">
-      <span className="text-xs font-medium text-zinc-700">{label}</span>
-      <input
-        id={id}
-        type="number"
-        min={min}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="h-9 rounded border border-zinc-300 bg-white px-2 text-sm text-zinc-950 shadow-sm focus:border-teal-700 focus:outline-none focus:ring-1 focus:ring-teal-700"
-      />
-    </label>
-  );
-}
-
-function CheckboxInput({ id, label, checked, onChange }) {
-  return (
-    <label htmlFor={id} className="flex h-full items-end gap-2 pb-1">
-      <input
-        id={id}
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="h-4 w-4 rounded border-zinc-400 text-teal-700 focus:ring-teal-700"
-      />
-      <span className="text-xs font-medium text-zinc-700">{label}</span>
-    </label>
-  );
-}
-
 function mapBboxToCanvas(bbox, pageSize, imageWidth, imageHeight, padding) {
   if (!bbox || !pageSize?.width || !pageSize?.height) return null;
 
@@ -235,8 +203,8 @@ function scaleBoxesForPreview(boxes, imageWidth, imageHeight) {
   }));
 }
 
-export default function ImageDebugPanel({ images, filters, onFiltersChange, onDecisionsChange }) {
-  const activeFilters = useMemo(() => normalizeVisionFilters(filters), [filters]);
+export default function ImageDebugPanel({ images, onDecisionsChange }) {
+  const activeFilters = useMemo(() => normalizeVisionFilters(), []);
   const analyses = useVisualAnalyses(images, activeFilters);
   const repeatCounts = useMemo(() => {
     const counts = new Map();
@@ -272,13 +240,6 @@ export default function ImageDebugPanel({ images, filters, onFiltersChange, onDe
     onDecisionsChange?.(decisions);
   }, [decisions, onDecisionsChange]);
 
-  function updateFilter(key, value) {
-    onFiltersChange({
-      ...activeFilters,
-      [key]: typeof value === "boolean" || Number.isFinite(value) ? value : 0,
-    });
-  }
-
   return (
     <section className="rounded border border-zinc-300 bg-white">
       <div className="border-b border-zinc-200 px-4 py-3">
@@ -288,60 +249,6 @@ export default function ImageDebugPanel({ images, filters, onFiltersChange, onDe
             {keptCount} send / {images.length} pages
           </span>
         </div>
-      </div>
-
-      <div className="grid gap-3 border-b border-zinc-200 px-4 py-3 sm:grid-cols-2 lg:grid-cols-6">
-        <NumberInput
-          id="min-picture-boxes"
-          label="Min picture boxes"
-          min={0}
-          value={activeFilters.minPictureBoxes}
-          onChange={(value) => updateFilter("minPictureBoxes", value)}
-        />
-        <NumberInput
-          id="min-picture-area"
-          label="Min picture area %"
-          min={0}
-          step={0.1}
-          value={activeFilters.minPictureAreaPercent}
-          onChange={(value) => updateFilter("minPictureAreaPercent", value)}
-        />
-        <NumberInput
-          id="min-residual-ratio"
-          label="Fallback residue %"
-          min={0}
-          step={0.1}
-          value={activeFilters.minResidualRatioPercent}
-          onChange={(value) => updateFilter("minResidualRatioPercent", value)}
-        />
-        <NumberInput
-          id="min-edge-ratio"
-          label="Fallback edge %"
-          min={0}
-          step={0.1}
-          value={activeFilters.minEdgeRatioPercent}
-          onChange={(value) => updateFilter("minEdgeRatioPercent", value)}
-        />
-        <NumberInput
-          id="mask-padding"
-          label="Mask padding"
-          min={0}
-          value={activeFilters.textMaskPadding}
-          onChange={(value) => updateFilter("textMaskPadding", value)}
-        />
-        <NumberInput
-          id="max-repeat-count"
-          label="Max repeats"
-          min={1}
-          value={activeFilters.maxRepeatCount}
-          onChange={(value) => updateFilter("maxRepeatCount", Math.max(1, value))}
-        />
-        <CheckboxInput
-          id="enable-residual-fallback"
-          label="Use residual fallback"
-          checked={activeFilters.enableResidualFallback}
-          onChange={(value) => updateFilter("enableResidualFallback", value)}
-        />
       </div>
 
       {images.length ? (

@@ -51,19 +51,23 @@ PPT / PPTX
 Gotenberg converts the presentation to PDF using LibreOffice. The app then wraps that PDF as a
 browser `File` and sends it through the same Docling flow used by normal PDF uploads.
 
-The app intentionally uses:
+The service pipeline intentionally hardcodes:
 
 ```text
 to_formats: ["md", "json"]
+do_ocr: true
+force_ocr: true
+do_table_structure: true
+table_mode: "accurate"
 image_export_mode: "embedded"
 include_images: true
-force_ocr: true by default
+images_scale: 2
 ```
 
 Referenced and placeholder image modes are not used because the downstream Vision pipeline needs
 direct image bytes.
 
-`Force visual OCR` is enabled by default because some slide PDFs contain broken embedded text
+Forced visual OCR is enabled because some slide PDFs contain broken embedded text
 layers or custom font encodings. In those files, normal PDF text extraction can produce garbled
 output even though the slide looks correct. Forced OCR asks Docling to read the rendered slide
 visually instead.
@@ -165,7 +169,7 @@ Default decision filters:
 
 ```js
 minPictureBoxes: 1
-minPictureAreaPercent: 10
+minPictureAreaPercent: 12
 maxRepeatCount: 1
 enableResidualFallback: false
 ```
@@ -173,7 +177,7 @@ enableResidualFallback: false
 Meaning:
 
 ```text
-Send to Vision if Docling detected at least one picture/figure region covering 10% or more
+Send to Vision if Docling detected at least one picture/figure region covering 12% or more
 of the slide image, unless the exact page image is repeated.
 ```
 
@@ -196,9 +200,8 @@ picture regions because they are more reliable for slide decks than raw OCR mask
 
 ### Garbled text output
 
-If text looks like shifted or nonsense characters, keep `Force visual OCR` enabled and run the
-extraction again. That usually means the PDF text layer is bad, not that the visible slide text is
-unreadable.
+If text looks like shifted or nonsense characters, the PDF text layer may be bad even though the
+visible slide text is readable. The service profile already forces visual OCR to reduce this issue.
 
 ### Docling server offline
 

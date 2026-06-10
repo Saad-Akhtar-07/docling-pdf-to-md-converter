@@ -3,7 +3,7 @@ const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 
 export const DEFAULT_VISION_FILTERS = {
   minPictureBoxes: 1,
-  minPictureAreaPercent: 10,
+  minPictureAreaPercent: 12,
   minResidualRatioPercent: 30,
   minEdgeRatioPercent: 10,
   textMaskPadding: 3,

@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import ChunksViewer from "./components/ChunksViewer.jsx";
-import ConversionOptions from "./components/ConversionOptions.jsx";
 import FileUploader from "./components/FileUploader.jsx";
 import ImageDebugPanel from "./components/ImageDebugPanel.jsx";
 import MarkdownViewer from "./components/MarkdownViewer.jsx";
@@ -9,22 +8,10 @@ import StatsPanel from "./components/StatsPanel.jsx";
 import { DEFAULT_DOCLING_BASE_URL, convertPdfWithDocling } from "./utils/doclingApi.js";
 import { DEFAULT_GOTENBERG_BASE_URL, convertPptToPdf } from "./utils/pptApi.js";
 import {
-  DEFAULT_VISION_FILTERS,
   appendKeptImagesToMarkdown,
   extractEmbeddedImages,
 } from "./utils/imagePipeline.js";
 import { buildStructuredPageOutput } from "./utils/responseParser.js";
-
-const DEFAULT_OPTIONS = {
-  doOcr: true,
-  forceOcr: true,
-  doTableStructure: true,
-  tableMode: "accurate",
-  outputFormat: "both",
-  imageExportMode: "embedded",
-  includeImages: true,
-  imagesScale: 2,
-};
 
 function formatFileSize(bytes) {
   if (!bytes) return "0 B";
@@ -62,7 +49,6 @@ function prepareFigureSummariesForFutureVision(figures) {
 
 export default function App() {
   const [file, setFile] = useState(null);
-  const [options, setOptions] = useState(DEFAULT_OPTIONS);
   const [markdown, setMarkdown] = useState("");
   const [rawResponse, setRawResponse] = useState(null);
   const [markdownSourcePath, setMarkdownSourcePath] = useState("");
@@ -71,7 +57,6 @@ export default function App() {
   const [figures, setFigures] = useState([]);
   const [debugImages, setDebugImages] = useState([]);
   const [imageDecisions, setImageDecisions] = useState([]);
-  const [imageFilters, setImageFilters] = useState(DEFAULT_VISION_FILTERS);
   const [tableCount, setTableCount] = useState(0);
   const [conversionTimeMs, setConversionTimeMs] = useState(null);
   const [error, setError] = useState("");
@@ -160,7 +145,6 @@ export default function App() {
       setConversionStage("Extracting Markdown with Docling...");
       const response = await convertPdfWithDocling({
         file: pdfFile,
-        options,
         baseUrl: DEFAULT_DOCLING_BASE_URL,
       });
 
@@ -226,7 +210,6 @@ export default function App() {
         <section className="grid gap-5 lg:grid-cols-[minmax(300px,380px)_1fr]">
           <div className="flex flex-col gap-5">
             <FileUploader file={file} onFileChange={handleFileChange} />
-            <ConversionOptions options={options} onChange={setOptions} disabled={isLoading} />
             <button
               type="button"
               onClick={handleConvert}
@@ -300,8 +283,6 @@ export default function App() {
 
             <ImageDebugPanel
               images={debugImages}
-              filters={imageFilters}
-              onFiltersChange={setImageFilters}
               onDecisionsChange={setImageDecisions}
             />
 
