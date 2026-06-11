@@ -1,8 +1,27 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { handleVisionRequest, loadDotEnv } from "./server/groqVisionService.js";
+
+function visionApiPlugin() {
+  return {
+    name: "slidevision-groq-vision-api",
+    configureServer(server) {
+      loadDotEnv();
+
+      server.middlewares.use(async (request, response, next) => {
+        if (!request.url?.startsWith("/api/vision")) {
+          next();
+          return;
+        }
+
+        await handleVisionRequest(request, response);
+      });
+    },
+  };
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), visionApiPlugin()],
   server: {
     proxy: {
       "/docling": {

@@ -6,6 +6,7 @@ const statLabels = {
   chunkCount: "Chunks",
   imageCount: "Docling figures",
   visionCandidateCount: "Vision pages",
+  visionDescriptionCount: "Vision descriptions",
   tableCount: "Tables",
 };
 

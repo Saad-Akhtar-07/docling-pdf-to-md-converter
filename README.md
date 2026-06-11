@@ -1,12 +1,12 @@
 # SlideVision Markdown Extractor
 
-A React + Vite + Tailwind app for turning slide PDFs into page-aware Markdown for downstream
-text and Vision LLM pipelines.
+A React + Vite + Tailwind app plus a small Node Vision worker for turning slide PDFs into
+page-aware Markdown for downstream teaching pipelines.
 
-The app uses Docling Serve to extract OCR/text/table content, keeps each slide/page separated, and
-embeds full-page slide images only for pages that Docling identifies as useful Vision candidates.
-This helps avoid sending plain text slides to a Vision model while preserving diagrams, charts,
-architecture figures, and other visual regions that OCR may not describe well.
+The app uses Docling Serve to extract OCR/text/table content, keeps each slide/page separated,
+selects full-page slide images only when Docling identifies useful visual regions, and sends those
+selected images to Groq Vision for compact descriptions. The final Markdown keeps text and tables,
+but replaces raw base64 image blobs with teaching-ready visual descriptions.
 
 ## What It Produces
 
@@ -17,13 +17,17 @@ The downloaded Markdown is organized by slide/page:
 
 OCR/text content extracted by Docling...
 
-### Vision Image
-Picture regions: 1, picture area: 36.95%, residual score: 20.57%
+### Visual Description
 
-![Page 4 vision image 1](data:image/png;base64,...)
+The slide shows an LSTM cell diagram with gates controlling how information moves through the
+cell state and hidden state.
+
+Teaching note:
+Use this visual to explain that the cell state is the long-term memory path, while the forget,
+input, and output gates regulate what is removed, added, and exposed at each time step.
 ```
 
-Pages without a `Send to Vision` decision include text only.
+Pages without a Vision candidate decision include text only.
 
 ## Core Pipeline
 
@@ -35,7 +39,8 @@ PDF slide deck
 -> embedded full-page slide images
 -> Docling picture-region scoring
 -> page-aware Markdown
--> optional Vision LLM step for selected pages
+-> Groq Vision descriptions for selected pages
+-> final Markdown without base64 images
 ```
 
 PowerPoint files (`.ppt` / `.pptx`) go through one extra conversion step first:
@@ -45,7 +50,7 @@ PPT / PPTX
 -> Gotenberg (LibreOffice headless)
 -> PDF
 -> existing Docling Serve pipeline
--> page-aware Markdown
+-> page-aware Markdown with Groq visual descriptions
 ```
 
 Gotenberg converts the presentation to PDF using LibreOffice. The app then wraps that PDF as a
@@ -79,6 +84,7 @@ visually instead.
 - Docker, for Docling Serve and Gotenberg
 - Docling Serve running at `http://localhost:5001`
 - Gotenberg running at `http://localhost:3000` for PowerPoint uploads
+- Groq API key in `.env.local` for Vision descriptions
 
 ## Install
 
@@ -88,8 +94,19 @@ npm install
 
 ## Run
 
+Start the app:
+
 ```bash
 npm run dev
+```
+
+During development, Vite also hosts the server-side Groq Vision API at `/api/vision/*`, so no
+second terminal is needed.
+
+The older alias also works:
+
+```bash
+npm run dev:all
 ```
 
 Open the Vite URL shown in the terminal, usually:
@@ -97,6 +114,52 @@ Open the Vite URL shown in the terminal, usually:
 ```text
 http://localhost:5173
 ```
+
+## Groq Vision
+
+The Vision worker calls Groq's OpenAI-compatible Chat Completions endpoint with:
+
+```text
+model: meta-llama/llama-4-scout-17b-16e-instruct
+response_format: json_object
+temperature: 0.2
+max_completion_tokens: 700
+```
+
+Create `.env.local`:
+
+```text
+GROQ_API_KEY=your_groq_api_key_here
+GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+GROQ_VISION_CONCURRENCY=1
+GROQ_VISION_REQUEST_DELAY_MS=15000
+GROQ_VISION_RETRY_COUNT=6
+GROQ_VISION_RETRY_BASE_DELAY_MS=4000
+GROQ_VISION_TIMEOUT_MS=180000
+GROQ_VISION_MAX_TOKENS=500
+GROQ_VISION_PAGE_TEXT_CHARS=1500
+GROQ_VISION_TEMPERATURE=0.2
+VISION_SERVICE_PORT=8787
+```
+
+The default Vision profile is intentionally slow and patient for free-tier Groq usage: one slide at
+a time, 15 seconds between requests, and retries with backoff on rate limits or transient server
+errors.
+
+During Vite development, the frontend calls the server-side Vision route at:
+
+```text
+/api/vision/describe-batch
+```
+
+Health check:
+
+```text
+http://localhost:5173/api/vision/health
+```
+
+Groq's current base64 image request limit is 4MB, so the service rejects a single slide image above
+that size and asks you to lower `images_scale` or switch to hosted image URLs.
 
 ## Gotenberg
 
@@ -162,8 +225,8 @@ Restart the Vite dev server after changing environment variables.
 
 ## Vision Candidate Logic
 
-The `Vision Candidate Pages` panel shows every embedded page image and whether it will be included
-in the final Markdown.
+The `Vision Candidate Pages` panel shows every embedded page image and whether it will be sent to
+Groq for description.
 
 Default decision filters:
 

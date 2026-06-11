@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ChunksViewer from "./components/ChunksViewer.jsx";
 import FileUploader from "./components/FileUploader.jsx";
 import ImageDebugPanel from "./components/ImageDebugPanel.jsx";
@@ -8,10 +8,11 @@ import StatsPanel from "./components/StatsPanel.jsx";
 import { DEFAULT_DOCLING_BASE_URL, convertPdfWithDocling } from "./utils/doclingApi.js";
 import { DEFAULT_GOTENBERG_BASE_URL, convertPptToPdf } from "./utils/pptApi.js";
 import {
-  appendKeptImagesToMarkdown,
+  appendVisionDescriptionsToMarkdown,
   extractEmbeddedImages,
 } from "./utils/imagePipeline.js";
 import { buildStructuredPageOutput } from "./utils/responseParser.js";
+import { describeVisionCandidates } from "./utils/visionApi.js";
 
 function formatFileSize(bytes) {
   if (!bytes) return "0 B";
@@ -57,21 +58,44 @@ export default function App() {
   const [figures, setFigures] = useState([]);
   const [debugImages, setDebugImages] = useState([]);
   const [imageDecisions, setImageDecisions] = useState([]);
+  const [visionDescriptions, setVisionDescriptions] = useState([]);
+  const [visionError, setVisionError] = useState("");
+  const [visionRun, setVisionRun] = useState(null);
+  const [isDescribingImages, setIsDescribingImages] = useState(false);
   const [tableCount, setTableCount] = useState(0);
   const [conversionTimeMs, setConversionTimeMs] = useState(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [conversionStage, setConversionStage] = useState("");
   const [copyState, setCopyState] = useState("idle");
+  const lastVisionJobRef = useRef("");
 
   const finalMarkdown = useMemo(
-    () => appendKeptImagesToMarkdown(markdown, imageDecisions),
-    [imageDecisions, markdown],
+    () => appendVisionDescriptionsToMarkdown(markdown, visionDescriptions),
+    [markdown, visionDescriptions],
   );
   const visionCandidateCount = useMemo(
     () => imageDecisions.filter((decision) => decision.isKept).length,
     [imageDecisions],
   );
+  const visionDescriptionCount = useMemo(
+    () => visionDescriptions.filter((description) => !description.error).length,
+    [visionDescriptions],
+  );
+  const pageTextByNumber = useMemo(() => {
+    const pages = new Map();
+
+    chunks.forEach((chunk) => {
+      const pageKey = chunk.pageNo ? String(chunk.pageNo) : "Unknown";
+      const current = pages.get(pageKey) || [];
+      current.push(chunk.content);
+      pages.set(pageKey, current);
+    });
+
+    return Object.fromEntries(
+      Array.from(pages.entries()).map(([pageNumber, contents]) => [pageNumber, contents.join("\n\n")]),
+    );
+  }, [chunks]);
 
   const stats = useMemo(
     () => ({
@@ -83,6 +107,7 @@ export default function App() {
       chunkCount: chunks.length,
       imageCount: figures.length,
       visionCandidateCount,
+      visionDescriptionCount,
       tableCount,
     }),
     [
@@ -93,8 +118,66 @@ export default function App() {
       finalMarkdown.length,
       tableCount,
       visionCandidateCount,
+      visionDescriptionCount,
     ],
   );
+
+  useEffect(() => {
+    const keptDecisions = imageDecisions.filter((decision) => decision.isKept);
+    const allImagesAnalyzed =
+      debugImages.length > 0 &&
+      imageDecisions.length === debugImages.length &&
+      imageDecisions.every(
+        (decision) => decision.analysis?.status === "ready" || decision.analysis?.status === "error",
+      );
+
+    if (!markdown || !keptDecisions.length || !allImagesAnalyzed) return;
+
+    const visionJobKey = keptDecisions
+      .map((decision) => `${decision.image.pageNumber || "Unknown"}:${decision.image.fingerprint}`)
+      .join("|");
+
+    if (!visionJobKey || lastVisionJobRef.current === visionJobKey) return;
+
+    lastVisionJobRef.current = visionJobKey;
+    setVisionError("");
+    setVisionDescriptions([]);
+    setVisionRun(null);
+    setIsDescribingImages(true);
+
+    describeVisionCandidates({
+      decisions: keptDecisions,
+      pageTextByNumber,
+    })
+      .then((result) => {
+        const descriptions = result.descriptions || [];
+        const failedCount = descriptions.filter((description) => description.error).length;
+
+        setVisionDescriptions(descriptions);
+        setVisionRun({
+          provider: result.provider,
+          model: result.model,
+          requested: keptDecisions.length,
+          completed: descriptions.length - failedCount,
+          failed: failedCount,
+        });
+
+        if (failedCount) {
+          setVisionError(`${failedCount} image description request(s) failed. Inspect the Vision status.`);
+        }
+      })
+      .catch((requestError) => {
+        setVisionError(requestError.message);
+        setVisionRun({
+          provider: "groq",
+          model: "",
+          requested: keptDecisions.length,
+          completed: 0,
+          failed: keptDecisions.length,
+        });
+      })
+      .finally(() => setIsDescribingImages(false));
+  }, [debugImages.length, imageDecisions, markdown, pageTextByNumber]);
 
   function handleFileChange(nextFile) {
     setError("");
@@ -108,15 +191,24 @@ export default function App() {
     setFigures([]);
     setDebugImages([]);
     setImageDecisions([]);
+    setVisionDescriptions([]);
+    setVisionError("");
+    setVisionRun(null);
+    setIsDescribingImages(false);
     setTableCount(0);
     setConversionTimeMs(null);
     setConversionStage("");
+    lastVisionJobRef.current = "";
   }
 
   async function handleConvert() {
     setError("");
     setCopyState("idle");
     setConversionStage("");
+    setVisionError("");
+    setVisionDescriptions([]);
+    setVisionRun(null);
+    lastVisionJobRef.current = "";
 
     if (!file) {
       setError("Select a file before converting.");
@@ -161,6 +253,9 @@ export default function App() {
       setFigures(normalizedFigures);
       setDebugImages(embeddedImages);
       setImageDecisions([]);
+      setVisionDescriptions([]);
+      setVisionError("");
+      setVisionRun(null);
       setTableCount(structuredOutput.tableCount);
       setConversionTimeMs(elapsed);
 
@@ -223,9 +318,26 @@ export default function App() {
                 {conversionStage}
               </div>
             ) : null}
+            {isDescribingImages ? (
+              <div className="rounded border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                Describing selected slide images with Groq Vision...
+              </div>
+            ) : null}
+            {visionRun ? (
+              <div className="rounded border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-700">
+                Vision: {visionRun.completed}/{visionRun.requested} described
+                {visionRun.failed ? `, ${visionRun.failed} failed` : ""} via {visionRun.provider}
+                {visionRun.model ? ` (${visionRun.model})` : ""}.
+              </div>
+            ) : null}
             {error ? (
               <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
                 {error}
+              </div>
+            ) : null}
+            {visionError ? (
+              <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+                {visionError}
               </div>
             ) : null}
             {warnings.length ? (

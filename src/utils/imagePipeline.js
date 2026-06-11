@@ -351,6 +351,82 @@ export function appendKeptImagesToMarkdown(markdown, decisions) {
   return renderedSections.join("\n\n---\n\n");
 }
 
+export function appendVisionDescriptionsToMarkdown(markdown, descriptions) {
+  const usableDescriptions = descriptions.filter(
+    (description) =>
+      !description.error &&
+      (description.visualDescription ||
+        description.teachingExplanation ||
+        description.importantVisualElements?.length ||
+        description.missingTextFromImage?.length),
+  );
+
+  if (!usableDescriptions.length) return markdown;
+
+  const descriptionsByPage = new Map();
+
+  usableDescriptions.forEach((description) => {
+    const pageKey = description.pageNumber ? String(description.pageNumber) : "Unknown";
+    if (!descriptionsByPage.has(pageKey)) {
+      descriptionsByPage.set(pageKey, []);
+    }
+    descriptionsByPage.get(pageKey).push(description);
+  });
+
+  function formatList(items) {
+    if (!items?.length) return "";
+    return items.map((item) => `- ${item}`).join("\n");
+  }
+
+  function formatDescription(description) {
+    const sections = ["### Visual Description"];
+
+    if (description.visualDescription) {
+      sections.push(description.visualDescription);
+    }
+
+    if (description.teachingExplanation) {
+      sections.push(`Teaching note:\n${description.teachingExplanation}`);
+    }
+
+    if (description.importantVisualElements?.length) {
+      sections.push(`Important visual elements:\n${formatList(description.importantVisualElements)}`);
+    }
+
+    if (description.missingTextFromImage?.length) {
+      sections.push(`Visible text or symbols not captured by OCR:\n${formatList(description.missingTextFromImage)}`);
+    }
+
+    return sections.join("\n\n");
+  }
+
+  const sections = markdown.trim().split(/\n\n---\n\n/);
+  const renderedSections = sections.map((section) => {
+    const pageMatch = section.match(/^\[Page ([^\]]+)\]/);
+    const pageKey = pageMatch?.[1] || "";
+    const pageDescriptions = descriptionsByPage.get(pageKey);
+
+    if (!pageDescriptions?.length) return section;
+
+    descriptionsByPage.delete(pageKey);
+
+    return `${section.trim()}\n\n${pageDescriptions.map(formatDescription).join("\n\n")}`;
+  });
+
+  if (descriptionsByPage.size) {
+    const unmatchedDescriptions = Array.from(descriptionsByPage.values())
+      .flat()
+      .map((description) => {
+        const pageText = description.pageNumber ? `Page ${description.pageNumber}` : "Page Unknown";
+        return `[${pageText}]\n\n${formatDescription(description)}`;
+      });
+
+    renderedSections.push(...unmatchedDescriptions);
+  }
+
+  return renderedSections.join("\n\n---\n\n");
+}
+
 function collectPictureAreas(root) {
   const pictureAreas = new Map();
   const seen = new WeakSet();
