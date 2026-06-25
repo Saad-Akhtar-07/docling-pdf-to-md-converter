@@ -8,6 +8,10 @@ selects full-page slide images only when Docling identifies useful visual region
 selected images to Groq Vision for compact descriptions. The final Markdown keeps text and tables,
 but replaces raw base64 image blobs with teaching-ready visual descriptions.
 
+An experimental LangChain/PyMuPDF pipeline is also available from the UI. It keeps OCR disabled,
+extracts native PDF text/tables first with PyMuPDF4LLM, renders page images with PyMuPDF, and uses
+PyMuPDF text/image/drawing boxes for the same Vision candidate panel.
+
 ## What It Produces
 
 The downloaded Markdown is organized by slide/page:
@@ -38,6 +42,18 @@ PDF slide deck
 -> Docling Serve OCR/table/layout extraction
 -> embedded full-page slide images
 -> Docling picture-region scoring
+-> page-aware Markdown
+-> Groq Vision descriptions for selected pages
+-> final Markdown without base64 images
+```
+
+The side-by-side lightweight path is:
+
+```text
+PDF slide deck
+-> PyMuPDF4LLM native text/table extraction
+-> PyMuPDF rendered page images
+-> PyMuPDF image/drawing-region scoring
 -> page-aware Markdown
 -> Groq Vision descriptions for selected pages
 -> final Markdown without base64 images
@@ -83,6 +99,7 @@ visually instead.
 - npm
 - Docker, for Docling Serve and Gotenberg
 - Docling Serve running at `http://localhost:5001`
+- Optional LangChain/PyMuPDF extractor running at `http://localhost:5051`
 - Gotenberg running at `http://localhost:3000` for PowerPoint uploads
 - Groq API key in `.env.local` for Vision descriptions
 
@@ -114,6 +131,18 @@ Open the Vite URL shown in the terminal, usually:
 ```text
 http://localhost:5173
 ```
+
+To test the experimental LangChain/PyMuPDF pipeline, install and start the side service:
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements-langchain-extractor.txt
+uvicorn server.langchainExtractorService:app --host 0.0.0.0 --port 5051
+```
+
+Then choose `LangChain/PyMuPDF` in the `Extractor Pipeline` panel. OCR is intentionally disabled
+in this path for now, so compare the Markdown quality against Docling before adding an OCR fallback.
 
 ## Groq Vision
 
@@ -222,6 +251,39 @@ VITE_DOCLING_BASE_URL=http://localhost:5001
 ```
 
 Restart the Vite dev server after changing environment variables.
+
+## LangChain/PyMuPDF Extractor
+
+The experimental extractor calls:
+
+```text
+POST /v1/convert/file
+```
+
+through the Vite proxy:
+
+```text
+/langchain-extractor/v1/convert/file
+```
+
+It returns the normalized shape used by the React app:
+
+```text
+markdown
+chunks
+figures
+embeddedImages
+tableCount
+warnings
+```
+
+The base URL and render scale can be configured in `.env.local`:
+
+```text
+VITE_LANGCHAIN_EXTRACTOR_BASE_URL=/langchain-extractor
+VITE_LANGCHAIN_EXTRACTOR_IMAGES_SCALE=2
+VITE_LANGCHAIN_EXTRACTOR_TIMEOUT_MS=600000
+```
 
 ## Vision Candidate Logic
 

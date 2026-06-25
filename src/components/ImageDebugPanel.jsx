@@ -110,6 +110,7 @@ function analyzeImage(image, filters) {
         .map((area) => mapBboxToCanvas(area.bbox, pageSize, preview.naturalWidth, preview.naturalHeight, 0))
         .filter(Boolean);
       const pictureArea = pictureBoxes.reduce((sum, box) => sum + box.width * box.height, 0);
+      const pictureAreaRatio = Math.min(1, pictureArea / (preview.naturalWidth * preview.naturalHeight));
 
       const scores = calculateResidualScores(canvas);
 
@@ -120,7 +121,7 @@ function analyzeImage(image, filters) {
         maskedSource: canvas.toDataURL("image/png"),
         textBoxCount: maskedBoxes.length,
         pictureBoxCount: pictureBoxes.length,
-        pictureAreaRatio: pictureArea / (preview.naturalWidth * preview.naturalHeight),
+        pictureAreaRatio,
         pictureBoxes,
         ...scores,
       });

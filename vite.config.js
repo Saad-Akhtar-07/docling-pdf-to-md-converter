@@ -34,6 +34,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/gotenberg/, ""),
       },
+      "/langchain-extractor": {
+        target: "http://localhost:5051",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/langchain-extractor/, ""),
+      },
     },
   },
 });

@@ -6,6 +6,10 @@ import MarkdownViewer from "./components/MarkdownViewer.jsx";
 import RawJsonViewer from "./components/RawJsonViewer.jsx";
 import StatsPanel from "./components/StatsPanel.jsx";
 import { DEFAULT_DOCLING_BASE_URL, convertPdfWithDocling } from "./utils/doclingApi.js";
+import {
+  DEFAULT_LANGCHAIN_EXTRACTOR_BASE_URL,
+  convertPdfWithLangChainExtractor,
+} from "./utils/langchainExtractorApi.js";
 import { DEFAULT_GOTENBERG_BASE_URL, convertPptToPdf } from "./utils/pptApi.js";
 import {
   appendVisionDescriptionsToMarkdown,
@@ -13,6 +17,19 @@ import {
 } from "./utils/imagePipeline.js";
 import { buildStructuredPageOutput } from "./utils/responseParser.js";
 import { describeVisionCandidates } from "./utils/visionApi.js";
+
+const EXTRACTOR_MODES = {
+  docling: {
+    label: "Docling",
+    stage: "Extracting Markdown with Docling...",
+    endpoint: `${DEFAULT_DOCLING_BASE_URL}/v1/convert/file`,
+  },
+  langchain: {
+    label: "LangChain/PyMuPDF",
+    stage: "Extracting Markdown with LangChain/PyMuPDF...",
+    endpoint: `${DEFAULT_LANGCHAIN_EXTRACTOR_BASE_URL}/v1/convert/file`,
+  },
+};
 
 function formatFileSize(bytes) {
   if (!bytes) return "0 B";
@@ -50,6 +67,7 @@ function prepareFigureSummariesForFutureVision(figures) {
 
 export default function App() {
   const [file, setFile] = useState(null);
+  const [extractorMode, setExtractorMode] = useState("docling");
   const [markdown, setMarkdown] = useState("");
   const [rawResponse, setRawResponse] = useState(null);
   const [markdownSourcePath, setMarkdownSourcePath] = useState("");
@@ -103,6 +121,7 @@ export default function App() {
       fileSize: file ? formatFileSize(file.size) : "-",
       conversionTime:
         typeof conversionTimeMs === "number" ? `${(conversionTimeMs / 1000).toFixed(2)} s` : "-",
+      extractorMode: EXTRACTOR_MODES[extractorMode].label,
       markdownCharacters: finalMarkdown.length,
       chunkCount: chunks.length,
       imageCount: figures.length,
@@ -113,6 +132,7 @@ export default function App() {
     [
       chunks.length,
       conversionTimeMs,
+      extractorMode,
       figures.length,
       file,
       finalMarkdown.length,
@@ -179,10 +199,7 @@ export default function App() {
       .finally(() => setIsDescribingImages(false));
   }, [debugImages.length, imageDecisions, markdown, pageTextByNumber]);
 
-  function handleFileChange(nextFile) {
-    setError("");
-    setCopyState("idle");
-    setFile(nextFile);
+  function clearExtractionResults() {
     setMarkdown("");
     setRawResponse(null);
     setMarkdownSourcePath("");
@@ -199,6 +216,22 @@ export default function App() {
     setConversionTimeMs(null);
     setConversionStage("");
     lastVisionJobRef.current = "";
+  }
+
+  function handleFileChange(nextFile) {
+    setError("");
+    setCopyState("idle");
+    setFile(nextFile);
+    clearExtractionResults();
+  }
+
+  function handleExtractorModeChange(nextMode) {
+    if (nextMode === extractorMode) return;
+
+    setExtractorMode(nextMode);
+    setError("");
+    setCopyState("idle");
+    clearExtractionResults();
   }
 
   async function handleConvert() {
@@ -232,18 +265,39 @@ export default function App() {
     const startedAt = performance.now();
 
     try {
-      setConversionStage(isPpt ? "Converting PowerPoint to PDF..." : "Sending PDF to Docling...");
+      const activeExtractor = EXTRACTOR_MODES[extractorMode];
+
+      setConversionStage(
+        isPpt ? "Converting PowerPoint to PDF..." : `Sending PDF to ${activeExtractor.label}...`,
+      );
       const pdfFile = isPpt ? await convertPptToPdf({ file }) : file;
-      setConversionStage("Extracting Markdown with Docling...");
-      const response = await convertPdfWithDocling({
-        file: pdfFile,
-        baseUrl: DEFAULT_DOCLING_BASE_URL,
-      });
+      setConversionStage(activeExtractor.stage);
+      const response =
+        extractorMode === "langchain"
+          ? await convertPdfWithLangChainExtractor({
+              file: pdfFile,
+              baseUrl: DEFAULT_LANGCHAIN_EXTRACTOR_BASE_URL,
+            })
+          : await convertPdfWithDocling({
+              file: pdfFile,
+              baseUrl: DEFAULT_DOCLING_BASE_URL,
+            });
 
       const elapsed = performance.now() - startedAt;
-      const structuredOutput = buildStructuredPageOutput(response, file.name);
+      const structuredOutput =
+        extractorMode === "langchain"
+          ? {
+              markdown: response.markdown || "",
+              chunks: response.chunks || [],
+              figures: response.figures || [],
+              tableCount: response.tableCount || 0,
+              sourcePath: response.sourcePath || "langchain_pymupdf4llm",
+              warnings: response.warnings || [],
+            }
+          : buildStructuredPageOutput(response, file.name);
       const normalizedFigures = prepareFigureSummariesForFutureVision(structuredOutput.figures);
-      const embeddedImages = extractEmbeddedImages(response);
+      const embeddedImages =
+        extractorMode === "langchain" ? response.embeddedImages || [] : extractEmbeddedImages(response);
 
       setRawResponse(response);
       setMarkdown(structuredOutput.markdown);
@@ -261,7 +315,7 @@ export default function App() {
 
       if (!structuredOutput.markdown) {
         setError(
-          "Docling responded successfully, but no page-aware content was extracted. Inspect the raw JSON below to update the parser.",
+          `${activeExtractor.label} responded successfully, but no page-aware content was extracted. Inspect the raw JSON below to update the parser.`,
         );
       }
     } catch (requestError) {
@@ -296,7 +350,7 @@ export default function App() {
             </h1>
           </div>
           <div className="rounded border border-zinc-300 bg-white px-3 py-2 font-mono text-xs text-zinc-700">
-            {DEFAULT_DOCLING_BASE_URL}/v1/convert/file
+            {EXTRACTOR_MODES[extractorMode].endpoint}
             <br />
             {DEFAULT_GOTENBERG_BASE_URL}/forms/libreoffice/convert
           </div>
@@ -305,13 +359,40 @@ export default function App() {
         <section className="grid gap-5 lg:grid-cols-[minmax(300px,380px)_1fr]">
           <div className="flex flex-col gap-5">
             <FileUploader file={file} onFileChange={handleFileChange} />
+            <section className="rounded border border-zinc-300 bg-white">
+              <div className="border-b border-zinc-200 px-4 py-3">
+                <h2 className="text-sm font-semibold text-zinc-950">Extractor Pipeline</h2>
+              </div>
+              <div className="grid grid-cols-2 gap-2 p-4">
+                {Object.entries(EXTRACTOR_MODES).map(([mode, config]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => handleExtractorModeChange(mode)}
+                    disabled={isLoading}
+                    className={`rounded border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      extractorMode === mode
+                        ? "border-teal-700 bg-teal-700 text-white"
+                        : "border-zinc-300 bg-white text-zinc-700 hover:border-teal-600"
+                    }`}
+                  >
+                    {config.label}
+                  </button>
+                ))}
+              </div>
+              <div className="border-t border-zinc-200 px-4 py-3 text-xs text-zinc-600">
+                {extractorMode === "langchain"
+                  ? "Experimental path: native PDF text/tables first, rendered page images for Vision candidates, OCR disabled."
+                  : "Current path: Docling Serve OCR/table/layout extraction with embedded images."}
+              </div>
+            </section>
             <button
               type="button"
               onClick={handleConvert}
               disabled={isLoading}
               className="inline-flex h-11 items-center justify-center rounded bg-teal-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
             >
-              {isLoading ? "Extracting..." : "Extract Slides"}
+              {isLoading ? "Extracting..." : `Extract Slides with ${EXTRACTOR_MODES[extractorMode].label}`}
             </button>
             {conversionStage ? (
               <div className="rounded border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
@@ -362,7 +443,9 @@ export default function App() {
 
             <section className="rounded border border-zinc-300 bg-white">
               <div className="border-b border-zinc-200 px-4 py-3">
-                <h2 className="text-sm font-semibold text-zinc-950">Docling Figure References</h2>
+                <h2 className="text-sm font-semibold text-zinc-950">
+                  {EXTRACTOR_MODES[extractorMode].label} Figure References
+                </h2>
               </div>
               {figures.length ? (
                 <div className="divide-y divide-zinc-200">
