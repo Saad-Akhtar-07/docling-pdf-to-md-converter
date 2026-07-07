@@ -3,12 +3,13 @@ const statLabels = {
   fileSize: "File size",
   conversionTime: "Conversion time",
   extractorMode: "Extractor",
+  extractionCacheStatus: "Extraction cache",
   markdownCharacters: "Markdown chars",
   chunkCount: "Chunks",
   renderedPageCount: "Rendered pages",
   keptImageCount: "Kept slide images",
   visualDescriptionCount: "Visual descriptions",
-  cacheHits: "Cache hits",
+  cacheHits: "Vision cache hits",
   cacheMisses: "New vision calls",
   visualFailures: "Visual failures",
   imageCount: "Figures",
@@ -23,10 +24,26 @@ export default function StatsPanel({ stats, markdownSourcePath }) {
       </div>
       <dl className="grid gap-2 px-4 py-3 text-sm">
         {Object.entries(stats).map(([key, value]) => (
-          <div key={key} className="grid grid-cols-[120px_1fr] gap-3">
+          <div key={key} className="grid grid-cols-[140px_1fr] gap-3">
             <dt className="text-zinc-500">{statLabels[key]}</dt>
             <dd className="min-w-0 break-words font-medium text-zinc-900">
-              {typeof value === "number" ? value.toLocaleString() : value}
+              {key === "extractionCacheStatus" ? (
+                <span
+                  className={`rounded px-2 py-0.5 text-xs font-semibold ${
+                    value === "hit"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : value === "miss"
+                        ? "bg-zinc-100 text-zinc-600"
+                        : "text-zinc-400"
+                  }`}
+                >
+                  {value === "hit" ? "✓ OCR skipped" : value === "miss" ? "full OCR run" : value}
+                </span>
+              ) : typeof value === "number" ? (
+                value.toLocaleString()
+              ) : (
+                value
+              )}
             </dd>
           </div>
         ))}

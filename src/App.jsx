@@ -52,6 +52,7 @@ export default function App() {
   const [visualDescriptions, setVisualDescriptions] = useState([]);
   const [visualRun, setVisualRun] = useState(null);
   const [visualError, setVisualError] = useState("");
+  const [extractionCacheStatus, setExtractionCacheStatus] = useState("");
   const [conversionTimeMs, setConversionTimeMs] = useState(null);
   const [error, setError] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
@@ -107,6 +108,7 @@ export default function App() {
       conversionTime:
         typeof conversionTimeMs === "number" ? `${(conversionTimeMs / 1000).toFixed(2)} s` : "-",
       extractorMode: EXTRACTOR_LABEL,
+      extractionCacheStatus: extractionCacheStatus || "-",
       markdownCharacters: finalMarkdown.length,
       chunkCount: chunks.length,
       renderedPageCount: debugImages.length,
@@ -122,6 +124,7 @@ export default function App() {
       chunks.length,
       conversionTimeMs,
       debugImages.length,
+      extractionCacheStatus,
       figures.length,
       file,
       finalMarkdown.length,
@@ -145,6 +148,7 @@ export default function App() {
     setVisualDescriptions([]);
     setVisualRun(null);
     setVisualError("");
+    setExtractionCacheStatus("");
     setTableCount(0);
     setConversionTimeMs(null);
     setConversionStage("");
@@ -203,6 +207,7 @@ export default function App() {
       setVisualDescriptions([]);
       setVisualRun(null);
       setVisualError("");
+      setExtractionCacheStatus(response.metadata?.cacheStatus || "");
       setTableCount(response.tableCount || 0);
       setConversionTimeMs(elapsed);
 

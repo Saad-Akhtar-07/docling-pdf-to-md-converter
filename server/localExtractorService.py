@@ -166,8 +166,10 @@ def format_visual_markdown(description: dict[str, Any]) -> str:
     return "\n\n".join(sections)
 
 
-def prompt_hash() -> str:
-    return sha256_text(f"{OPENCODE_VISION_PROMPT_VERSION}\n{VISUAL_DESCRIPTION_PROMPT_TEMPLATE}")
+def prompt_hash(actual_prompt: str) -> str:
+    """Hash the fully-constructed prompt (template + per-slide content) so any
+    change in OCR text, metrics, or config produces a different cache key."""
+    return sha256_text(f"{OPENCODE_VISION_PROMPT_VERSION}\n{actual_prompt}")
 
 
 def create_visual_prompt(page_number: Any, page_text: str, metrics: dict[str, Any] | None) -> str:
@@ -197,6 +199,8 @@ def get_cache_connection() -> sqlite3.Connection:
     connection = sqlite3.connect(SLIDEVISION_CACHE_PATH, timeout=30)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA journal_mode=WAL")
+
+    # --- visual description cache (per slide image + prompt) ---
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS visual_descriptions (
@@ -219,6 +223,45 @@ def get_cache_connection() -> sqlite3.Connection:
     connection.execute(
         "CREATE INDEX IF NOT EXISTS idx_visual_descriptions_slide_hash ON visual_descriptions(slide_hash)"
     )
+
+    # --- document extraction cache (per file hash + settings) ---
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS document_extractions (
+            file_hash TEXT NOT NULL,
+            images_scale REAL NOT NULL,
+            ocr_language TEXT NOT NULL,
+            force_ocr INTEGER NOT NULL,
+            file_name TEXT NOT NULL,
+            page_count INTEGER NOT NULL,
+            file_size_bytes INTEGER NOT NULL DEFAULT 0,
+            markdown TEXT NOT NULL,
+            chunks_json TEXT NOT NULL,
+            warnings_json TEXT NOT NULL,
+            table_count INTEGER NOT NULL DEFAULT 0,
+            metadata_json TEXT NOT NULL,
+            extraction_ms INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (file_hash, images_scale, ocr_language, force_ocr)
+        )
+        """
+    )
+
+    # --- document registry (deck_id concept for multi-user) ---
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS documents (
+            document_id TEXT PRIMARY KEY,
+            file_name TEXT NOT NULL,
+            file_size_bytes INTEGER NOT NULL DEFAULT 0,
+            page_count INTEGER NOT NULL,
+            slide_hashes_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            last_accessed_at TEXT NOT NULL
+        )
+        """
+    )
+
     connection.commit()
     return connection
 
@@ -436,7 +479,6 @@ def describe_visual_image(
     slide_hash = normalized_image["slideHash"]
     page_number = normalized_image["pageNumber"]
     text_hash = sha256_text(page_text or "")
-    active_prompt_hash = prompt_hash()
 
     if not slide_hash:
         return {
@@ -445,6 +487,11 @@ def describe_visual_image(
             "error": "Slide hash is missing.",
             "cacheStatus": "error",
         }
+
+    # Build the full prompt FIRST so its hash covers per-slide OCR text + metrics.
+    # This ensures any change in text or config produces a different cache key.
+    prompt = create_visual_prompt(page_number, page_text, normalized_image["metrics"])
+    active_prompt_hash = prompt_hash(prompt)
 
     cached = read_cached_visual_description(
         namespace_id,
@@ -480,8 +527,6 @@ def describe_visual_image(
             ),
             "cacheStatus": "error",
         }
-
-    prompt = create_visual_prompt(page_number, page_text, normalized_image["metrics"])
 
     try:
         raw_description, latency_ms = call_opencode_vision(normalized_image["source"], prompt, model_id)
@@ -1273,6 +1318,189 @@ async def describe_visuals(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Extraction cache helpers
+# ---------------------------------------------------------------------------
+
+def hash_file(path: Path) -> str:
+    """SHA-256 hash of raw file bytes — used as the extraction cache key."""
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def read_cached_extraction(
+    file_hash: str,
+    images_scale: float,
+    ocr_language: str,
+    force_ocr: bool,
+) -> dict[str, Any] | None:
+    with get_cache_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT * FROM document_extractions
+            WHERE file_hash = ? AND images_scale = ? AND ocr_language = ? AND force_ocr = ?
+            """,
+            (file_hash, images_scale, ocr_language, int(force_ocr)),
+        ).fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "provider": "local-pymupdf4llm-rapidocr",
+        "sourcePath": "local_pymupdf4llm",
+        "markdown": row["markdown"],
+        "chunks": json.loads(row["chunks_json"]),
+        "figures": [],  # re-built from fresh images after cache hit
+        "embeddedImages": [],  # re-rendered after cache hit
+        "tableCount": row["table_count"],
+        "warnings": json.loads(row["warnings_json"]),
+        "metadata": {
+            **json.loads(row["metadata_json"]),
+            "cacheStatus": "hit",
+            "originalExtractionMs": row["extraction_ms"],
+            "cachedAt": row["created_at"],
+        },
+    }
+
+
+def write_cached_extraction(
+    file_hash: str,
+    images_scale: float,
+    ocr_language: str,
+    force_ocr: bool,
+    file_name: str,
+    file_size_bytes: int,
+    response: dict[str, Any],
+) -> None:
+    metadata = {k: v for k, v in response.get("metadata", {}).items() if k != "elapsedMs"}
+    extraction_ms = response.get("metadata", {}).get("elapsedMs", 0)
+    now = utc_now_iso()
+    with get_cache_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO document_extractions (
+                file_hash, images_scale, ocr_language, force_ocr,
+                file_name, page_count, file_size_bytes,
+                markdown, chunks_json, warnings_json, table_count,
+                metadata_json, extraction_ms, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(file_hash, images_scale, ocr_language, force_ocr)
+            DO UPDATE SET
+                file_name = excluded.file_name,
+                page_count = excluded.page_count,
+                markdown = excluded.markdown,
+                chunks_json = excluded.chunks_json,
+                warnings_json = excluded.warnings_json,
+                table_count = excluded.table_count,
+                metadata_json = excluded.metadata_json,
+                extraction_ms = excluded.extraction_ms
+            """,
+            (
+                file_hash,
+                images_scale,
+                ocr_language,
+                int(force_ocr),
+                file_name,
+                response.get("metadata", {}).get("pageCount", 0),
+                file_size_bytes,
+                response.get("markdown", ""),
+                json.dumps(response.get("chunks", []), ensure_ascii=False),
+                json.dumps(response.get("warnings", []), ensure_ascii=False),
+                response.get("tableCount", 0),
+                json.dumps(metadata, ensure_ascii=False),
+                extraction_ms,
+                now,
+            ),
+        )
+        connection.commit()
+
+
+# ---------------------------------------------------------------------------
+# Document registry helpers (deck_id / multi-user)
+# ---------------------------------------------------------------------------
+
+def upsert_document(
+    document_id: str,
+    file_name: str,
+    file_size_bytes: int,
+    page_count: int,
+    slide_hashes: list[str],
+) -> None:
+    now = utc_now_iso()
+    with get_cache_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO documents (
+                document_id, file_name, file_size_bytes, page_count,
+                slide_hashes_json, created_at, last_accessed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(document_id) DO UPDATE SET
+                file_name = excluded.file_name,
+                page_count = excluded.page_count,
+                slide_hashes_json = excluded.slide_hashes_json,
+                last_accessed_at = excluded.last_accessed_at
+            """,
+            (
+                document_id,
+                file_name,
+                file_size_bytes,
+                page_count,
+                json.dumps(slide_hashes, ensure_ascii=False),
+                now,
+                now,
+            ),
+        )
+        connection.commit()
+
+
+# ---------------------------------------------------------------------------
+# Hash-only visual description lookup (no image data needed)
+# ---------------------------------------------------------------------------
+
+def read_cached_visual_description_by_hash(
+    namespace_id: str,
+    slide_hash: str,
+    model_id: str,
+) -> dict[str, Any] | None:
+    """Relaxed lookup — returns the newest cached entry for a slide hash
+    regardless of prompt version. Used by the hash-only lookup endpoint so
+    callers can check the cache without uploading base64 image data."""
+    with get_cache_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT * FROM visual_descriptions
+            WHERE namespace_id = ? AND slide_hash = ? AND model_id = ?
+            ORDER BY updated_at DESC LIMIT 1
+            """,
+            (namespace_id, slide_hash, model_id),
+        ).fetchone()
+
+    if not row:
+        return None
+
+    description = json.loads(row["description_json"])
+    return {
+        **description,
+        "slideHash": row["slide_hash"],
+        "textHash": row["text_hash"],
+        "model": row["model_id"],
+        "promptVersion": row["prompt_version"],
+        "markdownBlock": row["markdown_block"],
+        "latencyMs": row["latency_ms"],
+        "cacheStatus": "hit",
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# /v1/convert/file  — with extraction cache + document registry
+# ---------------------------------------------------------------------------
+
 @app.post("/v1/convert/file")
 async def convert_file(
     file: UploadFile = File(...),
@@ -1293,18 +1521,52 @@ async def convert_file(
         input_path = temp_dir / filename
 
         try:
+            # ---- 1. Save upload ----------------------------------------
+            file_size_bytes = 0
             with input_path.open("wb") as temp_file:
                 while True:
                     chunk = await file.read(1024 * 1024)
                     if not chunk:
                         break
                     temp_file.write(chunk)
+                    file_size_bytes += len(chunk)
 
+            # ---- 2. Hash the file (cache key) --------------------------
+            started_at = time.perf_counter()
+            file_hash = hash_file(input_path)
+
+            # ---- 3. PowerPoint conversion (needed before cache check) --
             conversion_warnings: list[str] = []
             pdf_path = input_path
             if is_powerpoint:
                 pdf_path, conversion_warnings = convert_office_to_pdf(input_path, temp_dir)
+                # Re-hash the resulting PDF for the cache key
+                file_hash = hash_file(pdf_path)
 
+            # ---- 4. Check extraction cache -----------------------------
+            cached = read_cached_extraction(file_hash, images_scale, ocr_language, force_ocr)
+            if cached:
+                # Re-render images (< 1 s); OCR is skipped entirely.
+                images = render_page_images(pdf_path, images_scale)
+                cached["embeddedImages"] = images
+                cached["figures"] = build_figures_from_images(images)
+                cached["warnings"] = conversion_warnings + cached["warnings"]
+                if is_powerpoint:
+                    cached["metadata"]["convertedFrom"] = filename
+                    cached["metadata"]["convertedPdfName"] = pdf_path.name
+                cached["metadata"]["elapsedMs"] = round((time.perf_counter() - started_at) * 1000)
+
+                # Update last_accessed_at in document registry
+                upsert_document(
+                    document_id=file_hash,
+                    file_name=filename,
+                    file_size_bytes=file_size_bytes,
+                    page_count=cached["metadata"].get("pageCount", len(images)),
+                    slide_hashes=[img["slideHash"] for img in images],
+                )
+                return cached
+
+            # ---- 5. Full extraction (slow path) ------------------------
             response = extract_document(
                 pdf_path,
                 document_name=filename,
@@ -1316,8 +1578,114 @@ async def convert_file(
             if is_powerpoint:
                 response["metadata"]["convertedFrom"] = filename
                 response["metadata"]["convertedPdfName"] = pdf_path.name
+            response["metadata"]["cacheStatus"] = "miss"
+
+            # ---- 6. Write extraction cache -----------------------------
+            write_cached_extraction(
+                file_hash=file_hash,
+                images_scale=images_scale,
+                ocr_language=ocr_language,
+                force_ocr=force_ocr,
+                file_name=filename,
+                file_size_bytes=file_size_bytes,
+                response=response,
+            )
+
+            # ---- 7. Register document for deck-level queries -----------
+            upsert_document(
+                document_id=file_hash,
+                file_name=filename,
+                file_size_bytes=file_size_bytes,
+                page_count=response["metadata"].get("pageCount", 0),
+                slide_hashes=[img["slideHash"] for img in response.get("embeddedImages", [])],
+            )
+
             return response
+
         except subprocess.TimeoutExpired as exc:
             raise HTTPException(status_code=504, detail=f"Local conversion timed out: {exc}") from exc
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# /v1/visual-descriptions/lookup  — hash-only cache check
+# ---------------------------------------------------------------------------
+
+@app.post("/v1/visual-descriptions/lookup")
+async def lookup_visual_descriptions(payload: dict[str, Any]) -> dict[str, Any]:
+    """Check the visual description cache by slide hash only.
+
+    Callers send a list of slide hashes (no base64 image data) and receive
+    back which slides are already cached and which are missing. This lets
+    the frontend skip uploading large images for slides already in cache.
+    """
+    slide_hashes: list[str] = [
+        str(h) for h in payload.get("slideHashes", []) if h
+    ]
+    model_id = str(payload.get("model") or OPENCODE_VISION_MODEL)
+    namespace_id = str(payload.get("namespaceId") or SLIDEVISION_CACHE_NAMESPACE)
+
+    cached_results: list[dict[str, Any]] = []
+    missing_hashes: list[str] = []
+
+    for slide_hash in slide_hashes:
+        result = read_cached_visual_description_by_hash(namespace_id, slide_hash, model_id)
+        if result:
+            result["slideHash"] = slide_hash  # ensure field is present
+            cached_results.append(result)
+        else:
+            missing_hashes.append(slide_hash)
+
+    return {
+        "cached": cached_results,
+        "missing": missing_hashes,
+        "totalRequested": len(slide_hashes),
+        "cacheHits": len(cached_results),
+        "cacheMisses": len(missing_hashes),
+    }
+
+
+# ---------------------------------------------------------------------------
+# /v1/documents  — list all processed documents
+# ---------------------------------------------------------------------------
+
+@app.get("/v1/documents")
+def list_documents() -> dict[str, Any]:
+    """Return all previously processed documents with their slide hashes and
+    the number of cached visual descriptions available for each.
+    """
+    with get_cache_connection() as connection:
+        docs = connection.execute(
+            "SELECT * FROM documents ORDER BY last_accessed_at DESC"
+        ).fetchall()
+
+    results = []
+    for doc in docs:
+        slide_hashes: list[str] = json.loads(doc["slide_hashes_json"] or "[]")
+        # Count how many slides for this document have a cached description
+        with get_cache_connection() as connection:
+            cached_count = connection.execute(
+                f"""
+                SELECT COUNT(DISTINCT slide_hash) FROM visual_descriptions
+                WHERE slide_hash IN ({','.join('?' * len(slide_hashes))})
+                """,
+                slide_hashes,
+            ).fetchone()[0] if slide_hashes else 0
+
+        results.append({
+            "documentId": doc["document_id"],
+            "fileName": doc["file_name"],
+            "fileSizeBytes": doc["file_size_bytes"],
+            "pageCount": doc["page_count"],
+            "slideCount": len(slide_hashes),
+            "cachedDescriptionCount": cached_count,
+            "createdAt": doc["created_at"],
+            "lastAccessedAt": doc["last_accessed_at"],
+        })
+
+    return {
+        "documents": results,
+        "total": len(results),
+        "cachePath": str(SLIDEVISION_CACHE_PATH),
+    }
