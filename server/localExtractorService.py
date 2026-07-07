@@ -106,20 +106,88 @@ def compact_page_text(page_text: str) -> str:
     return re.sub(r"\s+", " ", str(page_text or "")).strip()[:OPENCODE_VISION_PAGE_TEXT_CHARS]
 
 
-def normalize_json_content(content: str) -> dict[str, Any]:
+def _repair_truncated_json(text: str) -> str:
+    """Best-effort repair of JSON that was cut off at a token limit.
+
+    Strategy:
+    1. Close any open string (add a closing quote).
+    2. Close any open arrays and objects from the inside out.
+    3. Return the repaired text so json.loads() can succeed.
+    """
+    # Walk the string tracking state
+    in_string = False
+    escape_next = False
+    depth_stack: list[str] = []  # '{' or '['
+
+    for ch in text:
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == "\\" and in_string:
+            escape_next = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            if ch in "{": 
+                depth_stack.append("}")
+            elif ch in "[":
+                depth_stack.append("]")
+            elif ch in "}]":
+                if depth_stack and depth_stack[-1] == ch:
+                    depth_stack.pop()
+
+    # Close open string first
+    repaired = text
+    if in_string:
+        repaired += '"'
+
+    # Close open containers in reverse order
+    for closer in reversed(depth_stack):
+        repaired += closer
+
+    return repaired
+
+
+def normalize_json_content(content: str, is_truncated: bool = False) -> dict[str, Any]:
+    """Parse JSON from model output.
+
+    Handles three cases:
+    - Clean JSON string
+    - JSON wrapped in ```json...``` fences
+    - Truncated JSON (token limit hit) — repaired before parsing
+    """
     text = str(content or "").strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
         text = re.sub(r"\s*```$", "", text)
 
+    # Fast path: valid JSON
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1 and end > start:
+        pass
+
+    # Try extracting outermost {...} object
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
             return json.loads(text[start : end + 1])
-        raise
+        except json.JSONDecodeError:
+            pass
+
+    # If the model was cut off at the token limit, attempt structural repair
+    if is_truncated and start != -1:
+        repaired = _repair_truncated_json(text[start:])
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            pass
+
+    # Nothing worked — let the original error surface
+    raise json.JSONDecodeError("Could not parse model output as JSON", text, 0)
 
 
 def normalize_description_payload(payload: dict[str, Any], fallback_page_number: Any) -> dict[str, Any]:
@@ -440,10 +508,19 @@ def call_opencode_vision(
     if not content:
         raise RuntimeError(f"OpenCode response did not include message content: {response_payload}")
 
+    # Detect if the model was stopped early by a token limit
+    finish_reason = (
+        str(response_payload.get("choices", [{}])[0].get("finish_reason") or "").lower()
+    )
+    is_truncated = finish_reason == "length"
+
     try:
-        parsed = normalize_json_content(content)
+        parsed = normalize_json_content(content, is_truncated=is_truncated)
     except Exception as exc:
-        raise RuntimeError(f"OpenCode response was not valid JSON: {content[:500]}") from exc
+        truncation_note = " (output was truncated by token limit — raise OPENCODE_VISION_MAX_TOKENS)" if is_truncated else ""
+        raise RuntimeError(
+            f"OpenCode response was not valid JSON{truncation_note}: {content[:500]}"
+        ) from exc
 
     latency_ms = round((time.perf_counter() - started_at) * 1000)
     return parsed, latency_ms
