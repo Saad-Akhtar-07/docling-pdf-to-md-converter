@@ -7,13 +7,13 @@ module.exports = {
     "plugin:react/jsx-runtime",
     "plugin:react-hooks/recommended",
   ],
-  ignorePatterns: ["dist", ".eslintrc.cjs"],
+  ignorePatterns: ["dist", ".eslintrc.cjs", "test_opencode.js"],
   parserOptions: { ecmaVersion: "latest", sourceType: "module" },
   plugins: ["react-refresh"],
   settings: { react: { version: "18.3" } },
   overrides: [
     {
-      files: ["server/**/*.js", "vite.config.js"],
+      files: ["server/**/*.js", "scripts/**/*.mjs", "vite.config.js"],
       env: { browser: false, node: true, es2022: true },
     },
   ],

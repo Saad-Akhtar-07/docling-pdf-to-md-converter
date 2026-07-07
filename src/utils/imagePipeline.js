@@ -1,15 +1,26 @@
 const DATA_URI_PATTERN = /^data:image\/[a-zA-Z0-9.+-]+;base64,/;
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 
+function envNumber(name, fallback) {
+  const value = Number(import.meta.env[name]);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function envBoolean(name, fallback) {
+  const value = import.meta.env[name];
+  if (value === undefined) return fallback;
+  return String(value).toLowerCase() === "true";
+}
+
 export const DEFAULT_VISION_FILTERS = {
-  minPictureBoxes: 1,
-  minPictureAreaPercent: 12,
-  minResidualRatioPercent: 30,
-  minEdgeRatioPercent: 10,
-  textMaskPadding: 3,
-  minTextBoxesToMask: 1,
-  maxRepeatCount: 1,
-  enableResidualFallback: false,
+  minPictureBoxes: envNumber("VITE_VISUAL_MIN_PICTURE_BOXES", 1),
+  minPictureAreaPercent: envNumber("VITE_VISUAL_MIN_PICTURE_AREA_PERCENT", 12),
+  minResidualRatioPercent: envNumber("VITE_VISUAL_MIN_RESIDUAL_RATIO_PERCENT", 30),
+  minEdgeRatioPercent: envNumber("VITE_VISUAL_MIN_EDGE_RATIO_PERCENT", 10),
+  textMaskPadding: envNumber("VITE_VISUAL_TEXT_MASK_PADDING", 3),
+  minTextBoxesToMask: envNumber("VITE_VISUAL_MIN_TEXT_BOXES_TO_MASK", 1),
+  maxRepeatCount: envNumber("VITE_VISUAL_MAX_REPEAT_COUNT", 1),
+  enableResidualFallback: envBoolean("VITE_VISUAL_ENABLE_RESIDUAL_FALLBACK", false),
 };
 
 export function normalizeVisionFilters(filters = {}) {
@@ -355,10 +366,12 @@ export function appendVisionDescriptionsToMarkdown(markdown, descriptions) {
   const usableDescriptions = descriptions.filter(
     (description) =>
       !description.error &&
-      (description.visualDescription ||
+      (description.markdownBlock ||
+        description.visualDescription ||
         description.teachingExplanation ||
         description.importantVisualElements?.length ||
-        description.missingTextFromImage?.length),
+        description.missingTextFromImage?.length ||
+        description.visibleTextNotInOcr?.length),
   );
 
   if (!usableDescriptions.length) return markdown;
@@ -379,6 +392,10 @@ export function appendVisionDescriptionsToMarkdown(markdown, descriptions) {
   }
 
   function formatDescription(description) {
+    if (description.markdownBlock) {
+      return description.markdownBlock;
+    }
+
     const sections = ["### Visual Description"];
 
     if (description.visualDescription) {
@@ -393,8 +410,10 @@ export function appendVisionDescriptionsToMarkdown(markdown, descriptions) {
       sections.push(`Important visual elements:\n${formatList(description.importantVisualElements)}`);
     }
 
-    if (description.missingTextFromImage?.length) {
-      sections.push(`Visible text or symbols not captured by OCR:\n${formatList(description.missingTextFromImage)}`);
+    const missingText = description.visibleTextNotInOcr || description.missingTextFromImage;
+
+    if (missingText?.length) {
+      sections.push(`Visible text or symbols not captured by OCR:\n${formatList(missingText)}`);
     }
 
     return sections.join("\n\n");
@@ -426,6 +445,8 @@ export function appendVisionDescriptionsToMarkdown(markdown, descriptions) {
 
   return renderedSections.join("\n\n---\n\n");
 }
+
+export const appendVisualDescriptionsToMarkdown = appendVisionDescriptionsToMarkdown;
 
 function collectPictureAreas(root) {
   const pictureAreas = new Map();

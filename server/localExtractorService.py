@@ -1,9 +1,13 @@
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 import hashlib
+import json
 import math
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import tempfile
 import time
@@ -36,18 +40,511 @@ LIBREOFFICE_LISTENER_PORT = int(os.getenv("LOCAL_EXTRACTOR_LIBREOFFICE_PORT", "2
 LIBREOFFICE_PROFILE_DIR = Path(
     os.getenv("LOCAL_EXTRACTOR_LIBREOFFICE_PROFILE", tempfile.gettempdir())
 ) / "slidevision-libreoffice-profile"
+SLIDEVISION_CACHE_PATH = Path(os.getenv("SLIDEVISION_CACHE_PATH", "data/slidevision-cache.sqlite"))
+SLIDEVISION_CACHE_NAMESPACE = os.getenv("SLIDEVISION_CACHE_NAMESPACE", "default")
+OPENCODE_API_URL = os.getenv("OPENCODE_API_URL", "https://opencode.ai/zen/go/v1/chat/completions")
+OPENCODE_VISION_MODEL = os.getenv("OPENCODE_VISION_MODEL", "mimo-v2.5")
+OPENCODE_VISION_TIMEOUT_MS = int(os.getenv("OPENCODE_VISION_TIMEOUT_MS", "90000"))
+OPENCODE_VISION_MAX_TOKENS = int(os.getenv("OPENCODE_VISION_MAX_TOKENS", "1200"))
+OPENCODE_VISION_TEMPERATURE = float(os.getenv("OPENCODE_VISION_TEMPERATURE", "0.2"))
+OPENCODE_VISION_CONCURRENCY = int(os.getenv("OPENCODE_VISION_CONCURRENCY", "1"))
+OPENCODE_VISION_PAGE_TEXT_CHARS = int(os.getenv("OPENCODE_VISION_PAGE_TEXT_CHARS", "1800"))
+OPENCODE_VISION_MAX_IMAGE_BYTES = int(os.getenv("OPENCODE_VISION_MAX_IMAGE_BYTES", str(4 * 1024 * 1024)))
+OPENCODE_VISION_PROMPT_VERSION = os.getenv("OPENCODE_VISION_PROMPT_VERSION", "v1")
+OPENCODE_VISION_NODE_HELPER = Path(
+    os.getenv("OPENCODE_VISION_NODE_HELPER", "server/opencodeVisionClient.mjs")
+)
 
 LIBREOFFICE_PROCESS: subprocess.Popen | None = None
 RAPID_OCR_ENGINE: Any | None = None
 OCR_FONT = pymupdf.Font("cjk")
 OCR_FONTNAME = "slidevision_ocr_font"
 REPLACEMENT_UNICODE = chr(0xFFFD)
+VISUAL_DESCRIPTION_PROMPT_TEMPLATE = """
+You are preparing lecture-slide content for a teaching tutor.
+
+Return only valid JSON in English with these keys:
+- visualType: one of "diagram", "chart", "table", "equation", "photo", "mixed", "layout", "none"
+- visualDescription: 2-4 precise sentences describing only meaningful visual content, relationships, arrows, axes, equations, charts, diagrams, or images
+- teachingExplanation: 2-4 sentences explaining how a teacher should explain the visual to students
+- importantVisualElements: array of 3-8 short strings naming the key visual elements
+- visibleTextNotInOcr: array of short strings for visible text, symbols, labels, or formulas missing from OCR, or []
+- confidence: one of "low", "medium", "high"
+
+Rules:
+- Keep the JSON compact, under 350 words total.
+- Do not repeat all OCR text.
+- Do not invent details that are not visible.
+- If the slide is mostly text with no meaningful visual, set visualType to "none" and keep the description short.
+- Prefer clear teaching language over generic image captions.
+""".strip()
 
 
 def clamp_render_scale(value: float) -> float:
     if not math.isfinite(value) or value <= 0:
         return DEFAULT_IMAGES_SCALE
     return min(value, MAX_RENDER_SCALE)
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def estimate_data_uri_bytes(source: str) -> int:
+    if not source:
+        return 0
+
+    encoded = source.split(",", 1)[1] if "," in source else source
+    return round((len(encoded.strip()) * 3) / 4)
+
+
+def compact_page_text(page_text: str) -> str:
+    return re.sub(r"\s+", " ", str(page_text or "")).strip()[:OPENCODE_VISION_PAGE_TEXT_CHARS]
+
+
+def normalize_json_content(content: str) -> dict[str, Any]:
+    text = str(content or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```$", "", text)
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            return json.loads(text[start : end + 1])
+        raise
+
+
+def normalize_description_payload(payload: dict[str, Any], fallback_page_number: Any) -> dict[str, Any]:
+    return {
+        "pageNumber": payload.get("pageNumber") or fallback_page_number,
+        "visualType": str(payload.get("visualType") or "mixed").strip(),
+        "visualDescription": str(payload.get("visualDescription") or "").strip(),
+        "teachingExplanation": str(payload.get("teachingExplanation") or "").strip(),
+        "importantVisualElements": [
+            str(item).strip() for item in payload.get("importantVisualElements", []) if str(item).strip()
+        ]
+        if isinstance(payload.get("importantVisualElements"), list)
+        else [],
+        "visibleTextNotInOcr": [
+            str(item).strip() for item in payload.get("visibleTextNotInOcr", []) if str(item).strip()
+        ]
+        if isinstance(payload.get("visibleTextNotInOcr"), list)
+        else [],
+        "confidence": str(payload.get("confidence") or "medium").strip(),
+    }
+
+
+def format_list(items: list[str]) -> str:
+    return "\n".join(f"- {item}" for item in items if item)
+
+
+def format_visual_markdown(description: dict[str, Any]) -> str:
+    sections = ["### Visual Explanation"]
+
+    if description.get("visualDescription"):
+        sections.append(description["visualDescription"])
+
+    if description.get("teachingExplanation"):
+        sections.append(f"Teaching note:\n{description['teachingExplanation']}")
+
+    if description.get("importantVisualElements"):
+        sections.append(f"Important visual elements:\n{format_list(description['importantVisualElements'])}")
+
+    if description.get("visibleTextNotInOcr"):
+        sections.append(
+            f"Visible text or symbols not captured by OCR:\n{format_list(description['visibleTextNotInOcr'])}"
+        )
+
+    return "\n\n".join(sections)
+
+
+def prompt_hash() -> str:
+    return sha256_text(f"{OPENCODE_VISION_PROMPT_VERSION}\n{VISUAL_DESCRIPTION_PROMPT_TEMPLATE}")
+
+
+def create_visual_prompt(page_number: Any, page_text: str, metrics: dict[str, Any] | None) -> str:
+    page_label = f"Page {page_number}" if page_number else "Unknown page"
+    context_text = compact_page_text(page_text)
+    metrics_text = ""
+
+    if metrics:
+        metrics_text = (
+            "\nVisual detector metrics:"
+            f"\n- pictureBoxCount: {metrics.get('pictureBoxCount')}"
+            f"\n- pictureAreaRatio: {metrics.get('pictureAreaRatio')}"
+            f"\n- residualRatio: {metrics.get('residualRatio')}"
+            f"\n- edgeRatio: {metrics.get('edgeRatio')}"
+        )
+
+    return (
+        f"{VISUAL_DESCRIPTION_PROMPT_TEMPLATE}\n\n"
+        f"Slide: {page_label}\n"
+        f"Existing OCR text from this slide:\n{context_text or '[No OCR text available]'}"
+        f"{metrics_text}"
+    )
+
+
+def get_cache_connection() -> sqlite3.Connection:
+    SLIDEVISION_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(SLIDEVISION_CACHE_PATH, timeout=30)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS visual_descriptions (
+            namespace_id TEXT NOT NULL,
+            slide_hash TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            prompt_version TEXT NOT NULL,
+            prompt_hash TEXT NOT NULL,
+            text_hash TEXT NOT NULL,
+            page_number TEXT,
+            description_json TEXT NOT NULL,
+            markdown_block TEXT NOT NULL,
+            latency_ms INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (namespace_id, slide_hash, model_id, prompt_version, prompt_hash)
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_visual_descriptions_slide_hash ON visual_descriptions(slide_hash)"
+    )
+    connection.commit()
+    return connection
+
+
+def read_cached_visual_description(
+    namespace_id: str,
+    slide_hash: str,
+    model_id: str,
+    active_prompt_version: str,
+    active_prompt_hash: str,
+) -> dict[str, Any] | None:
+    with get_cache_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT * FROM visual_descriptions
+            WHERE namespace_id = ?
+              AND slide_hash = ?
+              AND model_id = ?
+              AND prompt_version = ?
+              AND prompt_hash = ?
+            """,
+            (namespace_id, slide_hash, model_id, active_prompt_version, active_prompt_hash),
+        ).fetchone()
+
+    if not row:
+        return None
+
+    description = json.loads(row["description_json"])
+    return {
+        **description,
+        "slideHash": row["slide_hash"],
+        "textHash": row["text_hash"],
+        "model": row["model_id"],
+        "promptVersion": row["prompt_version"],
+        "markdownBlock": row["markdown_block"],
+        "latencyMs": row["latency_ms"],
+        "cacheStatus": "hit",
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
+
+
+def write_cached_visual_description(
+    namespace_id: str,
+    slide_hash: str,
+    text_hash: str,
+    page_number: Any,
+    model_id: str,
+    active_prompt_version: str,
+    active_prompt_hash: str,
+    description: dict[str, Any],
+    markdown_block: str,
+    latency_ms: int,
+) -> None:
+    now = utc_now_iso()
+    with get_cache_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO visual_descriptions (
+                namespace_id,
+                slide_hash,
+                model_id,
+                prompt_version,
+                prompt_hash,
+                text_hash,
+                page_number,
+                description_json,
+                markdown_block,
+                latency_ms,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(namespace_id, slide_hash, model_id, prompt_version, prompt_hash)
+            DO UPDATE SET
+                text_hash = excluded.text_hash,
+                page_number = excluded.page_number,
+                description_json = excluded.description_json,
+                markdown_block = excluded.markdown_block,
+                latency_ms = excluded.latency_ms,
+                updated_at = excluded.updated_at
+            """,
+            (
+                namespace_id,
+                slide_hash,
+                model_id,
+                active_prompt_version,
+                active_prompt_hash,
+                text_hash,
+                str(page_number or ""),
+                json.dumps(description, ensure_ascii=False),
+                markdown_block,
+                latency_ms,
+                now,
+                now,
+            ),
+        )
+        connection.commit()
+
+
+def call_opencode_vision(
+    image_source: str,
+    prompt: str,
+    model_id: str,
+) -> tuple[dict[str, Any], int]:
+    api_key = os.getenv("OPENCODE_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("OPENCODE_API_KEY is not set. Add it to .env.local and restart the app.")
+
+    started_at = time.perf_counter()
+    payload = {
+        "model": model_id,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": image_source}},
+                ],
+            }
+        ],
+        "max_tokens": OPENCODE_VISION_MAX_TOKENS,
+        "temperature": OPENCODE_VISION_TEMPERATURE,
+        "response_format": {"type": "json_object"},
+    }
+    try:
+        completed = subprocess.run(
+            ["node", str(OPENCODE_VISION_NODE_HELPER)],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=OPENCODE_VISION_TIMEOUT_MS / 1000,
+            creationflags=get_no_window_flag(),
+            check=False,
+            env={
+                **os.environ,
+                "OPENCODE_API_KEY": api_key,
+                "OPENCODE_API_URL": OPENCODE_API_URL,
+            },
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("OpenCode request timed out.") from exc
+
+    if completed.returncode != 0:
+        details = (completed.stderr or completed.stdout or "No helper output.").strip()
+        raise RuntimeError(f"OpenCode helper failed: {details}")
+
+    try:
+        helper_result = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"OpenCode helper returned non-JSON output: {completed.stdout[:500]}") from exc
+
+    raw_body = str(helper_result.get("body") or "")
+    status_code = int(helper_result.get("status") or 0)
+
+    if status_code < 200 or status_code >= 300:
+        try:
+            error_payload = json.loads(raw_body)
+            message = (
+                error_payload.get("error", {}).get("message")
+                if isinstance(error_payload.get("error"), dict)
+                else error_payload.get("error")
+            )
+        except Exception:
+            message = raw_body
+        raise RuntimeError(f"OpenCode returned HTTP {status_code}: {message or 'No error body.'}")
+
+    try:
+        response_payload = json.loads(raw_body)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"OpenCode returned non-JSON body: {raw_body[:200]}") from exc
+
+    content = response_payload.get("choices", [{}])[0].get("message", {}).get("content", "")
+    if not content:
+        raise RuntimeError(f"OpenCode response did not include message content: {response_payload}")
+
+    try:
+        parsed = normalize_json_content(content)
+    except Exception as exc:
+        raise RuntimeError(f"OpenCode response was not valid JSON: {content[:500]}") from exc
+
+    latency_ms = round((time.perf_counter() - started_at) * 1000)
+    return parsed, latency_ms
+
+
+def normalize_image_job(image: dict[str, Any]) -> dict[str, Any]:
+    source = str(image.get("source") or "").strip()
+    slide_hash = str(image.get("slideHash") or image.get("fingerprint") or "").strip()
+
+    if not slide_hash and source:
+        slide_hash = sha256_text(source.split(",", 1)[1] if "," in source else source)
+
+    return {
+        "id": image.get("id") or slide_hash,
+        "pageNumber": image.get("pageNumber"),
+        "caption": image.get("caption") or "",
+        "source": source,
+        "slideHash": slide_hash,
+        "fingerprint": image.get("fingerprint") or slide_hash[:16],
+        "byteEstimate": int(image.get("byteEstimate") or estimate_data_uri_bytes(source)),
+        "metrics": image.get("metrics") or {},
+    }
+
+
+def describe_visual_image(
+    image: dict[str, Any],
+    page_text: str,
+    namespace_id: str,
+    model_id: str,
+    active_prompt_version: str,
+) -> dict[str, Any]:
+    normalized_image = normalize_image_job(image)
+    slide_hash = normalized_image["slideHash"]
+    page_number = normalized_image["pageNumber"]
+    text_hash = sha256_text(page_text or "")
+    active_prompt_hash = prompt_hash()
+
+    if not slide_hash:
+        return {
+            "id": normalized_image["id"],
+            "pageNumber": page_number,
+            "error": "Slide hash is missing.",
+            "cacheStatus": "error",
+        }
+
+    cached = read_cached_visual_description(
+        namespace_id,
+        slide_hash,
+        model_id,
+        active_prompt_version,
+        active_prompt_hash,
+    )
+    if cached:
+        return {
+            "id": normalized_image["id"],
+            "pageNumber": page_number,
+            **cached,
+        }
+
+    if not normalized_image["source"]:
+        return {
+            "id": normalized_image["id"],
+            "pageNumber": page_number,
+            "slideHash": slide_hash,
+            "error": "Slide image source is missing.",
+            "cacheStatus": "error",
+        }
+
+    if normalized_image["byteEstimate"] > OPENCODE_VISION_MAX_IMAGE_BYTES:
+        return {
+            "id": normalized_image["id"],
+            "pageNumber": page_number,
+            "slideHash": slide_hash,
+            "error": (
+                f"Slide image is {normalized_image['byteEstimate']} bytes, above "
+                f"OPENCODE_VISION_MAX_IMAGE_BYTES={OPENCODE_VISION_MAX_IMAGE_BYTES}."
+            ),
+            "cacheStatus": "error",
+        }
+
+    prompt = create_visual_prompt(page_number, page_text, normalized_image["metrics"])
+
+    try:
+        raw_description, latency_ms = call_opencode_vision(normalized_image["source"], prompt, model_id)
+        description = normalize_description_payload(raw_description, page_number)
+        markdown_block = format_visual_markdown(description)
+        write_cached_visual_description(
+            namespace_id=namespace_id,
+            slide_hash=slide_hash,
+            text_hash=text_hash,
+            page_number=page_number,
+            model_id=model_id,
+            active_prompt_version=active_prompt_version,
+            active_prompt_hash=active_prompt_hash,
+            description=description,
+            markdown_block=markdown_block,
+            latency_ms=latency_ms,
+        )
+        return {
+            "id": normalized_image["id"],
+            "slideHash": slide_hash,
+            "textHash": text_hash,
+            "model": model_id,
+            "promptVersion": active_prompt_version,
+            "markdownBlock": markdown_block,
+            "latencyMs": latency_ms,
+            "cacheStatus": "miss",
+            **description,
+        }
+    except Exception as exc:
+        return {
+            "id": normalized_image["id"],
+            "pageNumber": page_number,
+            "slideHash": slide_hash,
+            "model": model_id,
+            "promptVersion": active_prompt_version,
+            "error": str(exc),
+            "cacheStatus": "error",
+        }
+
+
+def run_visual_description_jobs(
+    images: list[dict[str, Any]],
+    page_text_by_number: dict[str, str],
+    namespace_id: str,
+    model_id: str,
+    active_prompt_version: str,
+) -> list[dict[str, Any]]:
+    def run_one(image: dict[str, Any]) -> dict[str, Any]:
+        page_number = image.get("pageNumber")
+        page_text = page_text_by_number.get(str(page_number or "Unknown"), "")
+        return describe_visual_image(image, page_text, namespace_id, model_id, active_prompt_version)
+
+    concurrency = max(1, min(OPENCODE_VISION_CONCURRENCY, len(images) or 1))
+    if concurrency == 1 or len(images) <= 1:
+        return [run_one(image) for image in images]
+
+    results: list[dict[str, Any] | None] = [None] * len(images)
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        future_to_index = {executor.submit(run_one, image): index for index, image in enumerate(images)}
+        for future in as_completed(future_to_index):
+            results[future_to_index[future]] = future.result()
+
+    return [result for result in results if result is not None]
 
 
 def get_no_window_flag() -> int:
@@ -531,13 +1028,14 @@ def extract_page_areas(page: pymupdf.Page) -> tuple[list[dict[str, Any]], list[d
     return text_areas, picture_areas
 
 
-def render_page_data_uri(page: pymupdf.Page, images_scale: float) -> tuple[str, str, int]:
+def render_page_data_uri(page: pymupdf.Page, images_scale: float) -> tuple[str, str, str, int]:
     matrix = pymupdf.Matrix(images_scale, images_scale)
     pixmap = page.get_pixmap(matrix=matrix, alpha=False)
     image_bytes = pixmap.tobytes("png")
     encoded = base64.b64encode(image_bytes).decode("ascii")
-    fingerprint = hashlib.sha256(image_bytes).hexdigest()[:16]
-    return f"data:image/png;base64,{encoded}", fingerprint, len(image_bytes)
+    slide_hash = hashlib.sha256(image_bytes).hexdigest()
+    fingerprint = slide_hash[:16]
+    return f"data:image/png;base64,{encoded}", fingerprint, slide_hash, len(image_bytes)
 
 
 def render_page_images(pdf_path: Path, images_scale: float) -> list[dict[str, Any]]:
@@ -547,7 +1045,7 @@ def render_page_images(pdf_path: Path, images_scale: float) -> list[dict[str, An
     with pymupdf.open(pdf_path) as document:
         for page in document:
             text_areas, picture_areas = extract_page_areas(page)
-            source, fingerprint, byte_estimate = render_page_data_uri(page, scale)
+            source, fingerprint, slide_hash, byte_estimate = render_page_data_uri(page, scale)
             page_number = page.number + 1
             images.append(
                 {
@@ -557,6 +1055,7 @@ def render_page_images(pdf_path: Path, images_scale: float) -> list[dict[str, An
                     "source": source,
                     "sourcePath": f"local.page[{page_number}].render",
                     "fingerprint": fingerprint,
+                    "slideHash": slide_hash,
                     "reference": f"local-page-{page_number}",
                     "pageSize": {
                         "width": float(page.rect.width),
@@ -728,6 +1227,49 @@ def health() -> dict[str, Any]:
         "libreOfficePath": find_libreoffice(),
         "libreOfficeListenerRunning": listener_running,
         "libreOfficePort": LIBREOFFICE_LISTENER_PORT,
+        "openCodeVision": {
+            "configured": bool(os.getenv("OPENCODE_API_KEY", "").strip()),
+            "model": OPENCODE_VISION_MODEL,
+            "promptVersion": OPENCODE_VISION_PROMPT_VERSION,
+            "cachePath": str(SLIDEVISION_CACHE_PATH),
+            "cacheNamespace": SLIDEVISION_CACHE_NAMESPACE,
+        },
+    }
+
+
+@app.post("/v1/visual-descriptions")
+async def describe_visuals(payload: dict[str, Any]) -> dict[str, Any]:
+    images = payload.get("images") if isinstance(payload.get("images"), list) else []
+    page_text_by_number = payload.get("pageTextByNumber") or {}
+    namespace_id = str(payload.get("namespaceId") or SLIDEVISION_CACHE_NAMESPACE or "default")
+    model_id = str(payload.get("model") or OPENCODE_VISION_MODEL)
+    active_prompt_version = str(payload.get("promptVersion") or OPENCODE_VISION_PROMPT_VERSION)
+    started_at = time.perf_counter()
+
+    descriptions = run_visual_description_jobs(
+        images=images,
+        page_text_by_number=page_text_by_number,
+        namespace_id=namespace_id,
+        model_id=model_id,
+        active_prompt_version=active_prompt_version,
+    )
+    cache_hits = sum(1 for description in descriptions if description.get("cacheStatus") == "hit")
+    cache_misses = sum(1 for description in descriptions if description.get("cacheStatus") == "miss")
+    failures = sum(1 for description in descriptions if description.get("cacheStatus") == "error")
+
+    return {
+        "provider": "opencode-go",
+        "model": model_id,
+        "promptVersion": active_prompt_version,
+        "namespaceId": namespace_id,
+        "descriptions": descriptions,
+        "cache": {
+            "hits": cache_hits,
+            "misses": cache_misses,
+            "failures": failures,
+            "path": str(SLIDEVISION_CACHE_PATH),
+        },
+        "elapsedMs": round((time.perf_counter() - started_at) * 1000),
     }
 
 
@@ -746,7 +1288,7 @@ async def convert_file(
     if not is_pdf and not is_powerpoint:
         raise HTTPException(status_code=400, detail="Only PDF, PPT, PPTX, or ODP input is supported.")
 
-    with tempfile.TemporaryDirectory(prefix="slidevision-local-") as temp_dir_name:
+    with tempfile.TemporaryDirectory(prefix="slidevision-local-", ignore_cleanup_errors=True) as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         input_path = temp_dir / filename
 

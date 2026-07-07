@@ -9,7 +9,8 @@ import {
   DEFAULT_LOCAL_EXTRACTOR_BASE_URL,
   convertFileWithLocalExtractor,
 } from "./utils/localExtractorApi.js";
-import { appendKeptImagesToMarkdown } from "./utils/imagePipeline.js";
+import { appendVisualDescriptionsToMarkdown } from "./utils/imagePipeline.js";
+import { describeVisualSlides } from "./utils/visualDescriptionApi.js";
 
 const EXTRACTOR_LABEL = "Local PyMuPDF4LLM + RapidOCR";
 
@@ -48,20 +49,56 @@ export default function App() {
   const [debugImages, setDebugImages] = useState([]);
   const [imageDecisions, setImageDecisions] = useState([]);
   const [tableCount, setTableCount] = useState(0);
+  const [visualDescriptions, setVisualDescriptions] = useState([]);
+  const [visualRun, setVisualRun] = useState(null);
+  const [visualError, setVisualError] = useState("");
   const [conversionTimeMs, setConversionTimeMs] = useState(null);
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [isDescribingVisuals, setIsDescribingVisuals] = useState(false);
   const [conversionStage, setConversionStage] = useState("");
   const [copyState, setCopyState] = useState("idle");
+  const isBusy = isExtracting || isDescribingVisuals;
 
   const finalMarkdown = useMemo(
-    () => appendKeptImagesToMarkdown(markdown, imageDecisions),
-    [imageDecisions, markdown],
+    () => appendVisualDescriptionsToMarkdown(markdown, visualDescriptions),
+    [markdown, visualDescriptions],
   );
   const keptImageCount = useMemo(
     () => imageDecisions.filter((decision) => decision.isKept).length,
     [imageDecisions],
   );
+  const visualDescriptionCount = useMemo(
+    () => visualDescriptions.filter((description) => !description.error).length,
+    [visualDescriptions],
+  );
+  const failedVisualDescriptionCount = useMemo(
+    () => visualDescriptions.filter((description) => description.error).length,
+    [visualDescriptions],
+  );
+  const allImagesAnalyzed = useMemo(
+    () =>
+      debugImages.length > 0 &&
+      imageDecisions.length === debugImages.length &&
+      imageDecisions.every(
+        (decision) => decision.analysis?.status === "ready" || decision.analysis?.status === "error",
+      ),
+    [debugImages.length, imageDecisions],
+  );
+  const pageTextByNumber = useMemo(() => {
+    const pages = new Map();
+
+    chunks.forEach((chunk) => {
+      const pageKey = chunk.pageNo ? String(chunk.pageNo) : "Unknown";
+      const current = pages.get(pageKey) || [];
+      current.push(chunk.content);
+      pages.set(pageKey, current);
+    });
+
+    return Object.fromEntries(
+      Array.from(pages.entries()).map(([pageNumber, contents]) => [pageNumber, contents.join("\n\n")]),
+    );
+  }, [chunks]);
 
   const stats = useMemo(
     () => ({
@@ -74,6 +111,10 @@ export default function App() {
       chunkCount: chunks.length,
       renderedPageCount: debugImages.length,
       keptImageCount,
+      visualDescriptionCount,
+      cacheHits: visualRun?.cache?.hits ?? 0,
+      cacheMisses: visualRun?.cache?.misses ?? 0,
+      visualFailures: failedVisualDescriptionCount,
       imageCount: figures.length,
       tableCount,
     }),
@@ -84,8 +125,11 @@ export default function App() {
       figures.length,
       file,
       finalMarkdown.length,
+      failedVisualDescriptionCount,
       keptImageCount,
       tableCount,
+      visualDescriptionCount,
+      visualRun,
     ],
   );
 
@@ -98,6 +142,9 @@ export default function App() {
     setFigures([]);
     setDebugImages([]);
     setImageDecisions([]);
+    setVisualDescriptions([]);
+    setVisualRun(null);
+    setVisualError("");
     setTableCount(0);
     setConversionTimeMs(null);
     setConversionStage("");
@@ -105,6 +152,7 @@ export default function App() {
 
   function handleFileChange(nextFile) {
     setError("");
+    setVisualError("");
     setCopyState("idle");
     setFile(nextFile);
     clearExtractionResults();
@@ -135,7 +183,7 @@ export default function App() {
       return;
     }
 
-    setIsLoading(true);
+    setIsExtracting(true);
     const startedAt = performance.now();
 
     try {
@@ -152,6 +200,9 @@ export default function App() {
       setFigures(response.figures || []);
       setDebugImages(response.embeddedImages || []);
       setImageDecisions([]);
+      setVisualDescriptions([]);
+      setVisualRun(null);
+      setVisualError("");
       setTableCount(response.tableCount || 0);
       setConversionTimeMs(elapsed);
 
@@ -164,7 +215,84 @@ export default function App() {
       setError(requestError.message);
       setConversionTimeMs(performance.now() - startedAt);
     } finally {
-      setIsLoading(false);
+      setIsExtracting(false);
+      setConversionStage("");
+    }
+  }
+
+  async function handleGenerateTeachingMarkdown() {
+    setVisualError("");
+    setCopyState("idle");
+
+    const keptDecisions = imageDecisions.filter((decision) => decision.isKept);
+
+    if (!markdown) {
+      setVisualError("Extract slides before generating teaching-ready visual descriptions.");
+      return;
+    }
+
+    if (!allImagesAnalyzed) {
+      setVisualError("Wait until visual slide analysis finishes.");
+      return;
+    }
+
+    if (!keptDecisions.length) {
+      setVisualDescriptions([]);
+      setVisualRun({
+        provider: "opencode-go",
+        model: "",
+        requested: 0,
+        completed: 0,
+        failed: 0,
+        cache: { hits: 0, misses: 0, failures: 0 },
+      });
+      return;
+    }
+
+    setIsDescribingVisuals(true);
+    setConversionStage("Generating teaching-ready visual descriptions with OpenCode Go...");
+
+    try {
+      const result = await describeVisualSlides({
+        decisions: keptDecisions,
+        pageTextByNumber,
+      });
+      const descriptions = result.descriptions || [];
+      const failedCount = descriptions.filter((description) => description.error).length;
+
+      setVisualDescriptions(descriptions);
+      setVisualRun({
+        provider: result.provider,
+        model: result.model,
+        promptVersion: result.promptVersion,
+        namespaceId: result.namespaceId,
+        requested: keptDecisions.length,
+        completed: descriptions.length - failedCount,
+        failed: failedCount,
+        cache: result.cache,
+        elapsedMs: result.elapsedMs,
+      });
+
+      if (failedCount) {
+        const firstError = descriptions.find((description) => description.error)?.error;
+        setVisualError(
+          `${failedCount} visual description request(s) failed. Cache hits were still used.${
+            firstError ? ` First error: ${firstError}` : ""
+          }`,
+        );
+      }
+    } catch (requestError) {
+      setVisualError(requestError.message);
+      setVisualRun({
+        provider: "opencode-go",
+        model: "",
+        requested: keptDecisions.length,
+        completed: 0,
+        failed: keptDecisions.length,
+        cache: { hits: 0, misses: 0, failures: keptDecisions.length },
+      });
+    } finally {
+      setIsDescribingVisuals(false);
       setConversionStage("");
     }
   }
@@ -208,17 +336,25 @@ export default function App() {
               </div>
               <div className="grid gap-2 px-4 py-3 text-sm text-zinc-700">
                 <p>PDF files are extracted directly. PPT, PPTX, and ODP files are converted with local LibreOffice first.</p>
-                <p>Large visual slides are kept as full images in the final Markdown after the threshold check.</p>
+                <p>Large visual slides can be described once with OpenCode Go and cached by slide hash.</p>
               </div>
             </section>
 
             <button
               type="button"
               onClick={handleConvert}
-              disabled={isLoading}
+              disabled={isBusy}
               className="inline-flex h-11 items-center justify-center rounded bg-teal-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
             >
-              {isLoading ? "Extracting..." : "Extract Slides Locally"}
+              {isExtracting ? "Extracting..." : "Extract Slides Locally"}
+            </button>
+            <button
+              type="button"
+              onClick={handleGenerateTeachingMarkdown}
+              disabled={isBusy || !markdown || !allImagesAnalyzed}
+              className="inline-flex h-11 items-center justify-center rounded border border-teal-700 bg-white px-4 text-sm font-semibold text-teal-800 shadow-sm transition hover:bg-teal-50 disabled:cursor-not-allowed disabled:border-zinc-300 disabled:text-zinc-400"
+            >
+              {isDescribingVisuals ? "Generating..." : "Generate Teaching-Ready Markdown"}
             </button>
 
             {conversionStage ? (
@@ -229,6 +365,18 @@ export default function App() {
             {error ? (
               <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
                 {error}
+              </div>
+            ) : null}
+            {visualRun ? (
+              <div className="rounded border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-700">
+                Visual descriptions: {visualRun.completed}/{visualRun.requested} ready
+                {visualRun.failed ? `, ${visualRun.failed} failed` : ""}. Cache hits:{" "}
+                {visualRun.cache?.hits ?? 0}, new calls: {visualRun.cache?.misses ?? 0}.
+              </div>
+            ) : null}
+            {visualError ? (
+              <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+                {visualError}
               </div>
             ) : null}
             {warnings.length ? (
@@ -244,7 +392,7 @@ export default function App() {
           <div className="flex min-w-0 flex-col gap-5">
             <MarkdownViewer
               markdown={finalMarkdown}
-              isLoading={isLoading}
+              isLoading={isExtracting}
               copyState={copyState}
               onCopy={handleCopyMarkdown}
               onDownload={() => downloadMarkdown(finalMarkdown, file?.name)}

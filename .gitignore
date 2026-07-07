@@ -9,3 +9,4 @@ yarn-error.log*
 pnpm-debug.log*
 __pycache__/
 *.pyc
+data/

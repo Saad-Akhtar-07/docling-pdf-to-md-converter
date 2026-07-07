@@ -44,7 +44,8 @@ export async function convertFileWithLocalExtractor({
       signal: controller.signal,
     });
 
-    const body = await response.json().catch(async () => ({ error: await response.text() }));
+    const responseClone = response.clone();
+    const body = await response.json().catch(async () => ({ error: await responseClone.text() }));
 
     if (!response.ok) {
       throw new Error(body?.detail || body?.error || `Local extractor returned HTTP ${response.status}.`);

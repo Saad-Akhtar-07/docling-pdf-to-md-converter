@@ -7,6 +7,10 @@ const statLabels = {
   chunkCount: "Chunks",
   renderedPageCount: "Rendered pages",
   keptImageCount: "Kept slide images",
+  visualDescriptionCount: "Visual descriptions",
+  cacheHits: "Cache hits",
+  cacheMisses: "New vision calls",
+  visualFailures: "Visual failures",
   imageCount: "Figures",
   tableCount: "Tables",
 };

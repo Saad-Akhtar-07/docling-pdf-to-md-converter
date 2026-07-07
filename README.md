@@ -2,20 +2,20 @@
 
 Docker-free local service for turning slide PDFs and presentations into page-aware Markdown.
 
-The MVP pipeline is intentionally small:
+The pipeline is intentionally local-first:
 
 ```text
 PDF / PPT / PPTX / ODP
 -> local LibreOffice conversion when needed
 -> PyMuPDF4LLM structured Markdown extraction
 -> RapidOCR for pages with missing or broken text
--> full-slide image kept only when visual regions pass the threshold
--> final Markdown
+-> visual-rich slides selected by threshold
+-> OpenCode Go vision description on cache misses
+-> teaching-ready Markdown with text descriptions inserted per page
 ```
 
-The app no longer waits for a Vision LLM. If a slide has a large diagram, chart, or picture, the
-rendered full slide is embedded directly in the Markdown so a downstream teaching model can inspect
-it later.
+Rendered slide images are used internally for visual understanding and hashing. The final Markdown
+does not need to carry base64 images once visual descriptions have been generated.
 
 ## Output Shape
 
@@ -24,14 +24,18 @@ it later.
 
 Extracted slide text, headings, bullets, and tables...
 
-### Slide Image
+### Visual Explanation
 
-Picture regions: 2, picture area: 34.22%, residual score: 18.91%
+This slide shows a neural network architecture with features flowing through hidden layers toward an
+output prediction.
 
-![Page 4 slide image 1](data:image/png;base64,...)
+Teaching note:
+Use this visual to explain that each layer transforms the previous representation into a more useful
+form for the final task.
 ```
 
-Pages without large visual regions stay text-only.
+Pages without large visual regions stay text-only. Before visual descriptions are generated, the app
+shows the local OCR Markdown only.
 
 ## Requirements
 
@@ -95,12 +99,30 @@ LOCAL_EXTRACTOR_OCR_LANGUAGE=eng
 LOCAL_EXTRACTOR_FORCE_OCR_RETRY=true
 LIBREOFFICE_PATH=C:\Program Files\LibreOffice\program\soffice.com
 VITE_LOCAL_EXTRACTOR_TIMEOUT_MS=600000
+
+OPENCODE_API_KEY=your_opencode_go_key
+OPENCODE_VISION_MODEL=mimo-v2.5
+OPENCODE_VISION_TIMEOUT_MS=90000
+OPENCODE_VISION_MAX_TOKENS=700
+OPENCODE_VISION_TEMPERATURE=0.2
+OPENCODE_VISION_CONCURRENCY=1
+OPENCODE_VISION_PAGE_TEXT_CHARS=1800
+OPENCODE_VISION_PROMPT_VERSION=v1
+SLIDEVISION_CACHE_NAMESPACE=default
+SLIDEVISION_CACHE_PATH=data/slidevision-cache.sqlite
+
+VITE_VISUAL_MIN_PICTURE_AREA_PERCENT=12
+VITE_VISUAL_MIN_PICTURE_BOXES=1
+VITE_VISUAL_ENABLE_RESIDUAL_FALLBACK=false
 ```
 
 Useful notes:
 
 - `LOCAL_EXTRACTOR_IMAGES_SCALE` controls rendered slide image size.
-- The frontend keeps full-slide images only after the visual threshold check.
+- The visual threshold controls which rendered slides are sent for description.
+- OpenCode calls are cached by namespace, slide image hash, model, and prompt version.
+- Increase `OPENCODE_VISION_PROMPT_VERSION` when changing the visual-description prompt.
+- Use `SLIDEVISION_CACHE_NAMESPACE` for an instructor or tenant id once the product has accounts.
 - RapidOCR is the only OCR engine used by this MVP.
 - The first RapidOCR run may take longer while models initialize.
 
@@ -124,6 +146,24 @@ The health response reports:
 - whether RapidOCR is available
 - LibreOffice path
 - whether the LibreOffice listener is running
+- OpenCode model/cache configuration
+
+## OpenCode Vision Probe
+
+After adding `OPENCODE_API_KEY` to `.env.local`, test image support with:
+
+```bash
+npm run probe:opencode
+```
+
+You can also test a specific model:
+
+```bash
+npm run probe:opencode -- mimo-v2.5
+```
+
+The app uses `mimo-v2.5` by default for visual descriptions because it has been verified to accept
+image input through the OpenCode Go `chat/completions` endpoint.
 
 ## Build
 
