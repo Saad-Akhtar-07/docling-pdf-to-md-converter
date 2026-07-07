@@ -1,0 +1,7 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pymupdf>=1.27
+pymupdf4llm>=1.27
+onnxruntime>=1.17
+rapidocr>=3.9

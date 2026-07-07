@@ -245,9 +245,9 @@ export default function ImageDebugPanel({ images, onDecisionsChange }) {
     <section className="rounded border border-zinc-300 bg-white">
       <div className="border-b border-zinc-200 px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-zinc-950">Vision Candidate Pages</h2>
+          <h2 className="text-sm font-semibold text-zinc-950">Large Visual Slides</h2>
           <span className="text-xs font-medium text-zinc-600">
-            {keptCount} send / {images.length} pages
+            {keptCount} kept / {images.length} pages
           </span>
         </div>
       </div>
@@ -298,7 +298,7 @@ export default function ImageDebugPanel({ images, onDecisionsChange }) {
                       isKept ? "bg-emerald-100 text-emerald-800" : "bg-zinc-200 text-zinc-700"
                     }`}
                   >
-                    {isKept ? "Send to Vision" : "Skip"}
+                    {isKept ? "Keep full slide" : "Skip"}
                   </span>
                   {image.pageNumber ? (
                     <span className="rounded bg-sky-100 px-2 py-0.5 font-medium text-sky-800">
@@ -344,7 +344,7 @@ export default function ImageDebugPanel({ images, onDecisionsChange }) {
           })}
         </div>
       ) : (
-        <p className="px-4 py-5 text-sm text-zinc-600">No embedded page images detected.</p>
+        <p className="px-4 py-5 text-sm text-zinc-600">No rendered slide images detected.</p>
       )}
     </section>
   );

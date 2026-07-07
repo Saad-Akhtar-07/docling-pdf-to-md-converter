@@ -1,129 +1,77 @@
 # SlideVision Markdown Extractor
 
-A React + Vite + Tailwind app plus a small Node Vision worker for turning slide PDFs into
-page-aware Markdown for downstream teaching pipelines.
+Docker-free local service for turning slide PDFs and presentations into page-aware Markdown.
 
-The app uses Docling Serve to extract OCR/text/table content, keeps each slide/page separated,
-selects full-page slide images only when Docling identifies useful visual regions, and sends those
-selected images to Groq Vision for compact descriptions. The final Markdown keeps text and tables,
-but replaces raw base64 image blobs with teaching-ready visual descriptions.
+The MVP pipeline is intentionally small:
 
-An experimental LangChain/PyMuPDF pipeline is also available from the UI. It keeps OCR disabled,
-extracts native PDF text/tables first with PyMuPDF4LLM, renders page images with PyMuPDF, and uses
-PyMuPDF text/image/drawing boxes for the same Vision candidate panel.
+```text
+PDF / PPT / PPTX / ODP
+-> local LibreOffice conversion when needed
+-> PyMuPDF4LLM structured Markdown extraction
+-> RapidOCR for pages with missing or broken text
+-> full-slide image kept only when visual regions pass the threshold
+-> final Markdown
+```
 
-## What It Produces
+The app no longer waits for a Vision LLM. If a slide has a large diagram, chart, or picture, the
+rendered full slide is embedded directly in the Markdown so a downstream teaching model can inspect
+it later.
 
-The downloaded Markdown is organized by slide/page:
+## Output Shape
 
 ```md
 [Page 4]
 
-OCR/text content extracted by Docling...
+Extracted slide text, headings, bullets, and tables...
 
-### Visual Description
+### Slide Image
 
-The slide shows an LSTM cell diagram with gates controlling how information moves through the
-cell state and hidden state.
+Picture regions: 2, picture area: 34.22%, residual score: 18.91%
 
-Teaching note:
-Use this visual to explain that the cell state is the long-term memory path, while the forget,
-input, and output gates regulate what is removed, added, and exposed at each time step.
+![Page 4 slide image 1](data:image/png;base64,...)
 ```
 
-Pages without a Vision candidate decision include text only.
-
-## Core Pipeline
-
-PDF files go directly to Docling Serve:
-
-```text
-PDF slide deck
--> Docling Serve OCR/table/layout extraction
--> embedded full-page slide images
--> Docling picture-region scoring
--> page-aware Markdown
--> Groq Vision descriptions for selected pages
--> final Markdown without base64 images
-```
-
-The side-by-side lightweight path is:
-
-```text
-PDF slide deck
--> PyMuPDF4LLM native text/table extraction
--> PyMuPDF rendered page images
--> PyMuPDF image/drawing-region scoring
--> page-aware Markdown
--> Groq Vision descriptions for selected pages
--> final Markdown without base64 images
-```
-
-PowerPoint files (`.ppt` / `.pptx`) go through one extra conversion step first:
-
-```text
-PPT / PPTX
--> Gotenberg (LibreOffice headless)
--> PDF
--> existing Docling Serve pipeline
--> page-aware Markdown with Groq visual descriptions
-```
-
-Gotenberg converts the presentation to PDF using LibreOffice. The app then wraps that PDF as a
-browser `File` and sends it through the same Docling flow used by normal PDF uploads.
-
-The service pipeline intentionally hardcodes:
-
-```text
-to_formats: ["md", "json"]
-do_ocr: true
-force_ocr: true
-do_table_structure: true
-table_mode: "accurate"
-image_export_mode: "embedded"
-include_images: true
-images_scale: 2
-```
-
-Referenced and placeholder image modes are not used because the downstream Vision pipeline needs
-direct image bytes.
-
-Forced visual OCR is enabled because some slide PDFs contain broken embedded text
-layers or custom font encodings. In those files, normal PDF text extraction can produce garbled
-output even though the slide looks correct. Forced OCR asks Docling to read the rendered slide
-visually instead.
+Pages without large visual regions stay text-only.
 
 ## Requirements
 
+- Windows 10/11
 - Node.js 18+
+- Python 3.11, 3.12, or 3.13, 64-bit
+- LibreOffice, for PPT/PPTX/ODP conversion
 - npm
-- Docker, for Docling Serve and Gotenberg
-- Docling Serve running at `http://localhost:5001`
-- Optional LangChain/PyMuPDF extractor running at `http://localhost:5051`
-- Gotenberg running at `http://localhost:3000` for PowerPoint uploads
-- Groq API key in `.env.local` for Vision descriptions
 
-## Install
+Docker is not required.
+
+## New PC Setup
+
+1. Install Node.js 18+.
+2. Install Python 3.11, 3.12, or 3.13.
+3. Install LibreOffice from `https://www.libreoffice.org/download/download-libreoffice/`.
+4. Add LibreOffice to PATH, or configure its path in `.env.local`:
+
+```text
+LIBREOFFICE_PATH=C:\Program Files\LibreOffice\program\soffice.com
+```
+
+5. Install JavaScript dependencies:
 
 ```bash
 npm install
 ```
 
-## Run
+6. Create and fill the Python virtual environment:
 
-Start the app:
+```bash
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install --upgrade pip
+.venv\Scripts\python.exe -m pip install -r requirements-local-extractor.txt
+```
+
+7. Start everything with one command:
 
 ```bash
 npm run dev
-```
-
-During development, Vite also hosts the server-side Groq Vision API at `/api/vision/*`, so no
-second terminal is needed.
-
-The older alias also works:
-
-```bash
-npm run dev:all
 ```
 
 Open the Vite URL shown in the terminal, usually:
@@ -132,227 +80,50 @@ Open the Vite URL shown in the terminal, usually:
 http://localhost:5173
 ```
 
-To test the experimental LangChain/PyMuPDF pipeline, install and start the side service:
+`npm run dev` starts both the React app and the local Python extractor. The extractor also starts a
+headless LibreOffice listener so presentation conversion does not pay the full startup cost each time.
+
+## Optional Environment
+
+Create `.env.local` if the defaults need changing:
+
+```text
+LOCAL_EXTRACTOR_PORT=5052
+LOCAL_EXTRACTOR_IMAGES_SCALE=2
+LOCAL_EXTRACTOR_MAX_IMAGES_SCALE=3
+LOCAL_EXTRACTOR_OCR_LANGUAGE=eng
+LOCAL_EXTRACTOR_FORCE_OCR_RETRY=true
+LIBREOFFICE_PATH=C:\Program Files\LibreOffice\program\soffice.com
+VITE_LOCAL_EXTRACTOR_TIMEOUT_MS=600000
+```
+
+Useful notes:
+
+- `LOCAL_EXTRACTOR_IMAGES_SCALE` controls rendered slide image size.
+- The frontend keeps full-slide images only after the visual threshold check.
+- RapidOCR is the only OCR engine used by this MVP.
+- The first RapidOCR run may take longer while models initialize.
+
+## Manual Service Debugging
+
+Normally this is not needed, but the Python service can be started by itself:
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements-langchain-extractor.txt
-uvicorn server.langchainExtractorService:app --host 0.0.0.0 --port 5051
-```
-
-Then choose `LangChain/PyMuPDF` in the `Extractor Pipeline` panel. OCR is intentionally disabled
-in this path for now, so compare the Markdown quality against Docling before adding an OCR fallback.
-
-## Groq Vision
-
-The Vision worker calls Groq's OpenAI-compatible Chat Completions endpoint with:
-
-```text
-model: meta-llama/llama-4-scout-17b-16e-instruct
-response_format: json_object
-temperature: 0.2
-max_completion_tokens: 700
-```
-
-Create `.env.local`:
-
-```text
-GROQ_API_KEY=your_groq_api_key_here
-GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
-GROQ_VISION_CONCURRENCY=1
-GROQ_VISION_REQUEST_DELAY_MS=15000
-GROQ_VISION_RETRY_COUNT=6
-GROQ_VISION_RETRY_BASE_DELAY_MS=4000
-GROQ_VISION_TIMEOUT_MS=180000
-GROQ_VISION_MAX_TOKENS=500
-GROQ_VISION_PAGE_TEXT_CHARS=1500
-GROQ_VISION_TEMPERATURE=0.2
-VISION_SERVICE_PORT=8787
-```
-
-The default Vision profile is intentionally slow and patient for free-tier Groq usage: one slide at
-a time, 15 seconds between requests, and retries with backoff on rate limits or transient server
-errors.
-
-During Vite development, the frontend calls the server-side Vision route at:
-
-```text
-/api/vision/describe-batch
+npm run dev:extractor
 ```
 
 Health check:
 
 ```text
-http://localhost:5173/api/vision/health
+http://127.0.0.1:5052/health
 ```
 
-Groq's current base64 image request limit is 4MB, so the service rejects a single slide image above
-that size and asks you to lower `images_scale` or switch to hosted image URLs.
+The health response reports:
 
-## Gotenberg
-
-Gotenberg is required only for PowerPoint files. Start it with:
-
-```bash
-docker run -d --name gotenberg -p 3000:3000 gotenberg/gotenberg:8
-```
-
-PDF files are sent directly to Docling and do not use Gotenberg.
-
-To stop and remove the container when you no longer need it:
-
-```bash
-docker stop gotenberg && docker rm gotenberg
-```
-
-During Vite development, PowerPoint conversion is called through:
-
-```text
-/gotenberg/forms/libreoffice/convert
-```
-
-The proxy target is configured in:
-
-```text
-vite.config.js
-```
-
-## Docling Serve
-
-The app calls:
-
-```text
-POST /v1/convert/file
-```
-
-through the Vite proxy:
-
-```text
-/docling/v1/convert/file
-```
-
-The Docling base URL is configured in:
-
-```text
-src/utils/doclingApi.js
-```
-
-By default it uses:
-
-```text
-VITE_DOCLING_BASE_URL=/docling
-```
-
-To call Docling directly from the browser, create `.env.local`:
-
-```text
-VITE_DOCLING_BASE_URL=http://localhost:5001
-```
-
-Restart the Vite dev server after changing environment variables.
-
-## LangChain/PyMuPDF Extractor
-
-The experimental extractor calls:
-
-```text
-POST /v1/convert/file
-```
-
-through the Vite proxy:
-
-```text
-/langchain-extractor/v1/convert/file
-```
-
-It returns the normalized shape used by the React app:
-
-```text
-markdown
-chunks
-figures
-embeddedImages
-tableCount
-warnings
-```
-
-The base URL and render scale can be configured in `.env.local`:
-
-```text
-VITE_LANGCHAIN_EXTRACTOR_BASE_URL=/langchain-extractor
-VITE_LANGCHAIN_EXTRACTOR_IMAGES_SCALE=2
-VITE_LANGCHAIN_EXTRACTOR_TIMEOUT_MS=600000
-```
-
-## Vision Candidate Logic
-
-The `Vision Candidate Pages` panel shows every embedded page image and whether it will be sent to
-Groq for description.
-
-Default decision filters:
-
-```js
-minPictureBoxes: 1
-minPictureAreaPercent: 12
-maxRepeatCount: 1
-enableResidualFallback: false
-```
-
-Meaning:
-
-```text
-Send to Vision if Docling detected at least one picture/figure region covering 12% or more
-of the slide image, unless the exact page image is repeated.
-```
-
-The panel also shows:
-
-```text
-original page image
-text-masked debug image
-picture box overlay
-picture area %
-residual score
-edge score
-skip/send reason
-```
-
-The text-masked preview is diagnostic only by default. The main decision uses Docling layout
-picture regions because they are more reliable for slide decks than raw OCR masking.
-
-## Common Issues
-
-### Garbled text output
-
-If text looks like shifted or nonsense characters, the PDF text layer may be bad even though the
-visible slide text is readable. The service profile already forces visual OCR to reduce this issue.
-
-### Docling server offline
-
-Confirm Docker is running and Docling Serve is listening on `http://localhost:5001`.
-
-### Gotenberg server offline
-
-PowerPoint uploads require Gotenberg at `http://localhost:3000`.
-
-### CORS error
-
-Use the default `/docling` and `/gotenberg` proxies during Vite development.
-
-### Timeout or large file delay
-
-If Docling returns `HTTP 504`, increase the Docling Serve wait time:
-
-```bash
-docker run -p 5001:5001 -e DOCLING_SERVE_MAX_SYNC_WAIT=600 your-docling-serve-image
-```
-
-The browser-side timeout can also be adjusted:
-
-```text
-VITE_DOCLING_TIMEOUT_MS=600000
-```
+- PyMuPDF and PyMuPDF4LLM versions
+- whether RapidOCR is available
+- LibreOffice path
+- whether the LibreOffice listener is running
 
 ## Build
 
@@ -365,3 +136,6 @@ Preview the production build:
 ```bash
 npm run preview
 ```
+
+For production deployment, run the Python extractor as a service and point
+`VITE_LOCAL_EXTRACTOR_BASE_URL` at that service.

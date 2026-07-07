@@ -5,9 +5,9 @@ const statLabels = {
   extractorMode: "Extractor",
   markdownCharacters: "Markdown chars",
   chunkCount: "Chunks",
+  renderedPageCount: "Rendered pages",
+  keptImageCount: "Kept slide images",
   imageCount: "Figures",
-  visionCandidateCount: "Vision pages",
-  visionDescriptionCount: "Vision descriptions",
   tableCount: "Tables",
 };
 

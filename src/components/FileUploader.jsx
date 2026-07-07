@@ -22,7 +22,7 @@ export default function FileUploader({ file, onFileChange }) {
       >
         <input
           type="file"
-          accept="application/pdf,.pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,.ppt,.pptx"
+          accept="application/pdf,.pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.oasis.opendocument.presentation,.ppt,.pptx,.odp"
           onChange={handleChange}
           className="sr-only"
         />

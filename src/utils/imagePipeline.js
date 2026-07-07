@@ -313,7 +313,7 @@ export function appendKeptImagesToMarkdown(markdown, decisions) {
 
   function formatVisionImage({ image, analysis }, index) {
     const pageText = image.pageNumber ? `Page ${image.pageNumber}` : "Page Unknown";
-    const altText = `${pageText} vision image ${index + 1}`;
+    const altText = `${pageText} slide image ${index + 1}`;
     const caption = image.caption ? `\n${image.caption}` : "";
     const scoreLine = analysis
       ? `\nPicture regions: ${analysis.pictureBoxCount}, picture area: ${(
@@ -321,7 +321,7 @@ export function appendKeptImagesToMarkdown(markdown, decisions) {
         ).toFixed(2)}%, residual score: ${(analysis.residualRatio * 100).toFixed(2)}%`
       : "";
 
-    return `### Vision Image${caption}${scoreLine}\n\n![${altText}](${image.source})`;
+    return `### Slide Image${caption}${scoreLine}\n\n![${altText}](${image.source})`;
   }
 
   const sections = markdown.trim().split(/\n\n---\n\n/);

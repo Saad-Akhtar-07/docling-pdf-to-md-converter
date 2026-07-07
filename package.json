@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:all": "vite",
-    "dev:vision": "node server/groqVisionService.js",
+    "dev:extractor": ".venv\\Scripts\\python.exe -m uvicorn server.localExtractorService:app --host 127.0.0.1 --port 5052",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0"
