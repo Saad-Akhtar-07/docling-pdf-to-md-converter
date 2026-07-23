@@ -1,0 +1,18 @@
+[importlinter]
+root_packages =
+    slidevision
+include_external_packages = True
+
+[importlinter:contract:tutor-core-isolation]
+name = tutor_core must not import an LLM library, an HTTP client, or a DB driver
+type = forbidden
+source_modules =
+    slidevision.tutor_core
+forbidden_modules =
+    slidevision.llm
+    slidevision.persistence
+    httpx
+    requests
+    sqlalchemy
+    openai
+    langgraph

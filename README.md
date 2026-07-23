@@ -1,6 +1,8 @@
-# SlideVision Markdown Extractor
+# SlideVision Adaptive Tutor
 
 Docker-free local service for turning slide PDFs and presentations into page-aware Markdown.
+This is the extraction stage (Module 0/0.5) of a larger adaptive tutoring system — see
+`docs/ARCHITECTURE_REVIEW_AND_ROADMAP.md` for the full spec and module roadmap.
 
 The pipeline is intentionally local-first:
 
@@ -16,6 +18,21 @@ PDF / PPT / PPTX / ODP
 
 Rendered slide images are used internally for visual understanding and hashing. The final Markdown
 does not need to carry base64 images once visual descriptions have been generated.
+
+## Repo layout
+
+```text
+apps/web/               React + Vite frontend
+packages/extraction/    Python extractor, importable as `slidevision.extraction`, plus a CLI
+apps/api/                FastAPI skeleton (health check only for now)
+packages/tutor_core/     (empty — pedagogical policy, no LLM/HTTP/DB imports allowed)
+packages/llm/            (empty — provider adapters, prompt registry)
+packages/persistence/    (empty — Postgres models/repositories)
+db/migrations/           (empty — Alembic migrations)
+tests/{unit,contract,integration,architecture}/
+```
+
+`pyproject.toml`, `.venv`, `data/` (gitignored cache), and `.env.local` all live at the repo root.
 
 ## Output Shape
 
@@ -52,27 +69,28 @@ Docker is not required.
 1. Install Node.js 18+.
 2. Install Python 3.11, 3.12, or 3.13.
 3. Install LibreOffice from `https://www.libreoffice.org/download/download-libreoffice/`.
-4. Add LibreOffice to PATH, or configure its path in `.env.local`:
+4. Add LibreOffice to PATH, or configure its path in `.env.local` (repo root):
 
 ```text
 LIBREOFFICE_PATH=C:\Program Files\LibreOffice\program\soffice.com
 ```
 
-5. Install JavaScript dependencies:
-
-```bash
-npm install
-```
-
-6. Create and fill the Python virtual environment:
+5. Create and fill the Python virtual environment (repo root):
 
 ```bash
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install --upgrade pip
-.venv\Scripts\python.exe -m pip install -r requirements-local-extractor.txt
+.venv\Scripts\python.exe -m pip install -e ".[extraction,dev]"
 ```
 
-7. Start everything with one command:
+6. Install JavaScript dependencies:
+
+```bash
+cd apps\web
+npm install
+```
+
+7. Start everything with one command (from `apps/web`):
 
 ```bash
 npm run dev
@@ -84,12 +102,15 @@ Open the Vite URL shown in the terminal, usually:
 http://localhost:5173
 ```
 
-`npm run dev` starts both the React app and the local Python extractor. The extractor also starts a
-headless LibreOffice listener so presentation conversion does not pay the full startup cost each time.
+`npm run dev` starts both the React app and the local Python extractor (spawned from `apps/web`, but
+run with the repo root as its working directory so `.venv`, `.env.local`, and `data/` all resolve
+correctly). The extractor also starts a headless LibreOffice listener so presentation conversion does
+not pay the full startup cost each time.
 
 ## Optional Environment
 
-Create `.env.local` if the defaults need changing:
+Create `.env.local` at the **repo root** if the defaults need changing — see `.env.example` for the
+full list, grouped and commented. The short version:
 
 ```text
 LOCAL_EXTRACTOR_PORT=5052
@@ -125,10 +146,19 @@ Useful notes:
 - Use `SLIDEVISION_CACHE_NAMESPACE` for an instructor or tenant id once the product has accounts.
 - RapidOCR is the only OCR engine used by this MVP.
 - The first RapidOCR run may take longer while models initialize.
+- Only `VITE_API_BASE_URL` and the browser-only heuristic variables listed in `.env.example` may use
+  the `VITE_` prefix — see CLAUDE.md invariant #7. No secret may ever be `VITE_`-prefixed.
 
 ## Manual Service Debugging
 
-Normally this is not needed, but the Python service can be started by itself:
+Normally this is not needed, but the Python service can be started by itself, either directly from
+the repo root:
+
+```bash
+.venv\Scripts\python.exe -m uvicorn slidevision.extraction.service:app --host 127.0.0.1 --port 5052
+```
+
+or via the npm convenience script from `apps/web`:
 
 ```bash
 npm run dev:extractor
@@ -148,9 +178,17 @@ The health response reports:
 - whether the LibreOffice listener is running
 - OpenCode model/cache configuration
 
+## Extraction CLI
+
+The extractor is also usable without HTTP, useful for regression-testing extraction output directly:
+
+```bash
+.venv\Scripts\python.exe -m slidevision.extraction.cli path\to\deck.pptx -o output.md
+```
+
 ## OpenCode Vision Probe
 
-After adding `OPENCODE_API_KEY` to `.env.local`, test image support with:
+After adding `OPENCODE_API_KEY` to `.env.local`, test image support with (from `apps/web`):
 
 ```bash
 npm run probe:opencode
@@ -167,6 +205,8 @@ image input through the OpenCode Go `chat/completions` endpoint.
 
 ## Build
 
+From `apps/web`:
+
 ```bash
 npm run build
 ```
@@ -178,4 +218,4 @@ npm run preview
 ```
 
 For production deployment, run the Python extractor as a service and point
-`VITE_LOCAL_EXTRACTOR_BASE_URL` at that service.
+`VITE_API_BASE_URL` at that service.

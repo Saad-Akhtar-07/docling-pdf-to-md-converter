@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slidevision"
+version = "0.1.0"
+description = "SlideVision Adaptive Tutor"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+extraction = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
+    "pymupdf>=1.27",
+    "pymupdf4llm>=1.27",
+    "onnxruntime>=1.17",
+    "rapidocr>=3.9",
+]
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+]
+dev = [
+    "pytest>=8.0",
+    "import-linter>=2.0",
+]
+
+[tool.setuptools]
+package-dir = { "slidevision" = "packages" }
+packages = [
+    "slidevision",
+    "slidevision.extraction",
+    "slidevision.tutor_core",
+    "slidevision.llm",
+    "slidevision.persistence",
+    "apps",
+    "apps.api",
+]
+
+[tool.setuptools.package-data]
+"slidevision.extraction" = ["opencode_helper/*.mjs"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
