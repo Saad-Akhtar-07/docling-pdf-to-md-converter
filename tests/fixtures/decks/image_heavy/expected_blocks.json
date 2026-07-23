@@ -1,0 +1,102 @@
+{
+  "documentId": "bc9174237f169d5cfc6cc122363c97a97fcd875224e010e344c186e703c7cd81",
+  "warnings": [],
+  "blocks": [
+    {
+      "block_id": "b_c834d75b5ac249eb",
+      "document_id": "bc9174237f169d5cfc6cc122363c97a97fcd875224e010e344c186e703c7cd81",
+      "slide_no": 1,
+      "order_index": 0,
+      "text": "Client-Server Architecture",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.103144,
+        0.449769,
+        0.13427
+      ]
+    },
+    {
+      "block_id": "b_62b2bce52377749e",
+      "document_id": "bc9174237f169d5cfc6cc122363c97a97fcd875224e010e344c186e703c7cd81",
+      "slide_no": 1,
+      "order_index": 1,
+      "text": "Figure: a client sends a request; the server returns a response.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.176894,
+        0.602775,
+        0.199693
+      ]
+    },
+    {
+      "block_id": "b_73c4f689e94c1de6",
+      "document_id": "bc9174237f169d5cfc6cc122363c97a97fcd875224e010e344c186e703c7cd81",
+      "slide_no": 2,
+      "order_index": 0,
+      "text": "Load Balancing",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.103633,
+        0.310619,
+        0.142215
+      ]
+    },
+    {
+      "block_id": "b_c54fb480fc13667b",
+      "document_id": "bc9174237f169d5cfc6cc122363c97a97fcd875224e010e344c186e703c7cd81",
+      "slide_no": 2,
+      "order_index": 1,
+      "text": "Figure: a load balancer distributes requests across replicas.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.176894,
+        0.576649,
+        0.199693
+      ]
+    },
+    {
+      "block_id": "b_99c82b2d3341d642",
+      "document_id": "bc9174237f169d5cfc6cc122363c97a97fcd875224e010e344c186e703c7cd81",
+      "slide_no": 3,
+      "order_index": 0,
+      "text": "Cache Layer",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.103144,
+        0.273219,
+        0.142215
+      ]
+    },
+    {
+      "block_id": "b_93f210689c5eae65",
+      "document_id": "bc9174237f169d5cfc6cc122363c97a97fcd875224e010e344c186e703c7cd81",
+      "slide_no": 3,
+      "order_index": 1,
+      "text": "Figure: a cache sits between the application and the database.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.176894,
+        0.600825,
+        0.199693
+      ]
+    }
+  ]
+}

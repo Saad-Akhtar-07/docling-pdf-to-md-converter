@@ -23,6 +23,17 @@ def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def hash_file(path) -> str:
+    """SHA-256 hash of raw file bytes — stable document identity, independent
+    of any later lossy conversion (e.g. LibreOffice PPTX->PDF, which embeds a
+    fresh timestamp on every run and so is not itself hash-stable)."""
+    hasher = hashlib.sha256()
+    with open(path, "rb") as file:
+        while chunk := file.read(65536):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
 def estimate_data_uri_bytes(source: str) -> int:
     if not source:
         return 0

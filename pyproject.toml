@@ -18,6 +18,8 @@ extraction = [
     "pymupdf4llm>=1.27",
     "onnxruntime>=1.17",
     "rapidocr>=3.9",
+    "pydantic>=2.0",
+    "numpy>=1.26",
 ]
 api = [
     "fastapi>=0.115",

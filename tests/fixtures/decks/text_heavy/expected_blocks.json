@@ -1,0 +1,246 @@
+{
+  "documentId": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+  "warnings": [],
+  "blocks": [
+    {
+      "block_id": "b_02da2ed628092e45",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 1,
+      "order_index": 0,
+      "text": "Introduction to Sorting Algorithms",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.103144,
+        0.551733,
+        0.142215
+      ]
+    },
+    {
+      "block_id": "b_5df509d597189085",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 1,
+      "order_index": 1,
+      "text": "Sorting rearranges the elements of a list into a defined order.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.222902,
+        0.585731,
+        0.245989
+      ]
+    },
+    {
+      "block_id": "b_b53a2869f07bca82",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 1,
+      "order_index": 2,
+      "text": "Comparison-based sorts are bounded below by O(n log n) worst case.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.274754,
+        0.66095,
+        0.297841
+      ]
+    },
+    {
+      "block_id": "b_77b1a2dba7ad3713",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 1,
+      "order_index": 3,
+      "text": "Stability means equal elements keep their original relative order.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.326606,
+        0.612778,
+        0.349693
+      ]
+    },
+    {
+      "block_id": "b_dd6b2bd0ee01392f",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 2,
+      "order_index": 0,
+      "text": "Merge Sort",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.103144,
+        0.251128,
+        0.142215
+      ]
+    },
+    {
+      "block_id": "b_96e91b3e091a3eef",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 2,
+      "order_index": 1,
+      "text": "Merge sort splits the input in half recursively.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.223119,
+        0.456218,
+        0.245989
+      ]
+    },
+    {
+      "block_id": "b_d8a78f5a651c1b31",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 2,
+      "order_index": 2,
+      "text": "Each half is sorted independently, then merged in linear time.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.27497,
+        0.589739,
+        0.297841
+      ]
+    },
+    {
+      "block_id": "b_84cd913de854f8a5",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 2,
+      "order_index": 3,
+      "text": "Merge sort is stable and runs in O(n log n) time in all cases.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.326606,
+        0.575638,
+        0.349693
+      ]
+    },
+    {
+      "block_id": "b_1c9d942e4e578fc9",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 3,
+      "order_index": 0,
+      "text": "Quick Sort",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.103144,
+        0.242633,
+        0.135737
+      ]
+    },
+    {
+      "block_id": "b_048066eb8fa8ed04",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 3,
+      "order_index": 1,
+      "text": "Quick sort partitions the array around a chosen pivot element.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.222902,
+        0.592736,
+        0.245989
+      ]
+    },
+    {
+      "block_id": "b_3d62d155ef5d156d",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 3,
+      "order_index": 2,
+      "text": "Average case running time is O(n log n); worst case is O(n^2).",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.274754,
+        0.597142,
+        0.297841
+      ]
+    },
+    {
+      "block_id": "b_a8c9e43642b90ee2",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 3,
+      "order_index": 3,
+      "text": "In place partitioning avoids the extra memory merge sort needs.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.326894,
+        0.609781,
+        0.349693
+      ]
+    },
+    {
+      "block_id": "b_94e2ab07c35258b9",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 4,
+      "order_index": 0,
+      "text": "Summary",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.103144,
+        0.230717,
+        0.142215
+      ]
+    },
+    {
+      "block_id": "b_37aab715b9d9c4ee",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 4,
+      "order_index": 1,
+      "text": "Choose merge sort when stability or worst-case guarantees matter.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.222902,
+        0.636846,
+        0.245989
+      ]
+    },
+    {
+      "block_id": "b_aa06b9d28af2fc5d",
+      "document_id": "00efc422a1f4173aa48dec5801c1503cb3ddfd2829cd15e5c9764150e134dd57",
+      "slide_no": 4,
+      "order_index": 2,
+      "text": "Choose quick sort when average-case speed and low memory matter.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.274754,
+        0.659939,
+        0.297841
+      ]
+    }
+  ]
+}

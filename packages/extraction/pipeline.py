@@ -2,6 +2,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .blocks import build_document_blocks
 from .geometry import build_figures_from_images, render_page_images
 from .markdown_build import run_pymupdf4llm
 from .utils import clamp_render_scale
@@ -13,6 +14,7 @@ def extract_document(
     images_scale: float,
     ocr_language: str,
     force_ocr: bool,
+    document_id: str,
 ) -> dict[str, Any]:
     started_at = time.perf_counter()
     warnings: list[str] = []
@@ -25,12 +27,20 @@ def extract_document(
         warnings=warnings,
     )
     images = render_page_images(input_path, images_scale)
+    blocks = build_document_blocks(
+        input_path,
+        document_id=document_id,
+        force_ocr=force_ocr,
+        warnings=warnings,
+    )
 
     return {
         "provider": "local-pymupdf4llm-rapidocr",
         "sourcePath": "local_pymupdf4llm",
+        "documentId": document_id,
         "markdown": markdown,
         "chunks": chunks,
+        "blocks": [block.model_dump() for block in blocks],
         "figures": build_figures_from_images(images),
         "embeddedImages": images,
         "tableCount": table_count,

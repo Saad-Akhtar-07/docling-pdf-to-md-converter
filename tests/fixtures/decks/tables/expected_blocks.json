@@ -1,0 +1,246 @@
+{
+  "documentId": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+  "warnings": [],
+  "blocks": [
+    {
+      "block_id": "b_f20f6947fb83268e",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 1,
+      "order_index": 0,
+      "text": "Algorithm Complexity Comparison",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.103144,
+        0.561817,
+        0.142215
+      ]
+    },
+    {
+      "block_id": "b_e00d1b073204d466",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 1,
+      "order_index": 1,
+      "text": "Algorithm\nBest\nWorst",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.108333,
+        0.262928,
+        0.537113,
+        0.282219
+      ]
+    },
+    {
+      "block_id": "b_dcdaac478bf21c2b",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 1,
+      "order_index": 2,
+      "text": "Merge Sort\nO(n log n)\nO(n log n)",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.108333,
+        0.321943,
+        0.565147,
+        0.341478
+      ]
+    },
+    {
+      "block_id": "b_88f2d66ea5bab661",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 1,
+      "order_index": 3,
+      "text": "Quick Sort\nO(n log n)\nO(n^2)",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.108333,
+        0.381202,
+        0.543437,
+        0.400737
+      ]
+    },
+    {
+      "block_id": "b_e3cb3ed087b871aa",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 1,
+      "order_index": 4,
+      "text": "Bubble Sort\nO(n)\nO(n^2)",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.108333,
+        0.440461,
+        0.543437,
+        0.459874
+      ]
+    },
+    {
+      "block_id": "b_4aafcb23df9e455a",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 2,
+      "order_index": 0,
+      "text": "Data Structure Operations",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.103144,
+        0.454933,
+        0.142215
+      ]
+    },
+    {
+      "block_id": "b_757310b4a057d560",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 2,
+      "order_index": 1,
+      "text": "Structure\nInsert\nLookup",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.108333,
+        0.262683,
+        0.547333,
+        0.282219
+      ]
+    },
+    {
+      "block_id": "b_9112df99bab00de8",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 2,
+      "order_index": 2,
+      "text": "Array\nO(n)\nO(1)",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.108333,
+        0.321943,
+        0.527778,
+        0.341478
+      ]
+    },
+    {
+      "block_id": "b_a821987ba2edf8e5",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 2,
+      "order_index": 3,
+      "text": "Linked List\nO(1)\nO(n)",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.108333,
+        0.381202,
+        0.527778,
+        0.400615
+      ]
+    },
+    {
+      "block_id": "b_4707363edf480109",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 2,
+      "order_index": 4,
+      "text": "Hash Table\nO(1)\nO(1)",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.108333,
+        0.440461,
+        0.527778,
+        0.459874
+      ]
+    },
+    {
+      "block_id": "b_f0a5d51ade23c5e1",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 3,
+      "order_index": 0,
+      "text": "Storage Cost Estimates",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.103144,
+        0.420956,
+        0.142215
+      ]
+    },
+    {
+      "block_id": "b_e0c2058e980696e1",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 3,
+      "order_index": 1,
+      "text": "Item\nRows\nBytes/Row",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.108333,
+        0.262928,
+        0.570235,
+        0.282219
+      ]
+    },
+    {
+      "block_id": "b_970d4b248b3bfeed",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 3,
+      "order_index": 2,
+      "text": "Users\n12,000\n128",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.108333,
+        0.322187,
+        0.522706,
+        0.340072
+      ]
+    },
+    {
+      "block_id": "b_06c8029fe5db265f",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 3,
+      "order_index": 3,
+      "text": "Orders\n480,000\n256",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.108333,
+        0.381202,
+        0.522706,
+        0.399331
+      ]
+    },
+    {
+      "block_id": "b_66fc8430ec60690e",
+      "document_id": "4b91c0f33b6927d229fdd65f26d227b63c386dad7d976f0f4357c15853056e4c",
+      "slide_no": 3,
+      "order_index": 4,
+      "text": "Events\n9,300,000\n64",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.108333,
+        0.440706,
+        0.514211,
+        0.458591
+      ]
+    }
+  ]
+}

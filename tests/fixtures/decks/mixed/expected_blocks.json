@@ -1,0 +1,134 @@
+{
+  "documentId": "bb860be80524568dc1f323740a4e09bb2a32d03daa060aa338758d1bb6b8799d",
+  "warnings": [],
+  "blocks": [
+    {
+      "block_id": "b_ec2c2c0676489c4c",
+      "document_id": "bb860be80524568dc1f323740a4e09bb2a32d03daa060aa338758d1bb6b8799d",
+      "slide_no": 1,
+      "order_index": 0,
+      "text": "Networking Fundamentals",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.103633,
+        0.454903,
+        0.142215
+      ]
+    },
+    {
+      "block_id": "b_5e2b0e15d437d659",
+      "document_id": "bb860be80524568dc1f323740a4e09bb2a32d03daa060aa338758d1bb6b8799d",
+      "slide_no": 1,
+      "order_index": 1,
+      "text": "A network connects devices so they can exchange data.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.223191,
+        0.549619,
+        0.245989
+      ]
+    },
+    {
+      "block_id": "b_ed8d16de4fe3a791",
+      "document_id": "bb860be80524568dc1f323740a4e09bb2a32d03daa060aa338758d1bb6b8799d",
+      "slide_no": 1,
+      "order_index": 2,
+      "text": "Packets carry data plus addressing and control information.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.27497,
+        0.574662,
+        0.297841
+      ]
+    },
+    {
+      "block_id": "b_dc255aa0b21d247d",
+      "document_id": "bb860be80524568dc1f323740a4e09bb2a32d03daa060aa338758d1bb6b8799d",
+      "slide_no": 2,
+      "order_index": 0,
+      "text": "The OSI Model",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.103144,
+        0.305486,
+        0.13427
+      ]
+    },
+    {
+      "block_id": "b_37fc742a50fa8447",
+      "document_id": "bb860be80524568dc1f323740a4e09bb2a32d03daa060aa338758d1bb6b8799d",
+      "slide_no": 2,
+      "order_index": 1,
+      "text": "Figure: seven layers from physical transmission to application.",
+      "provenance": "verbatim",
+      "ocr_confidence": null,
+      "producer": null,
+      "bbox": [
+        0.1,
+        0.176822,
+        0.59669,
+        0.199693
+      ]
+    },
+    {
+      "block_id": "b_7de7881fc9b5ed2c",
+      "document_id": "bb860be80524568dc1f323740a4e09bb2a32d03daa060aa338758d1bb6b8799d",
+      "slide_no": 3,
+      "order_index": 0,
+      "text": "Handwritten Note",
+      "provenance": "ocr",
+      "ocr_confidence": 0.99965,
+      "producer": null,
+      "bbox": [
+        0.096774,
+        0.123005,
+        0.381552,
+        0.175532
+      ]
+    },
+    {
+      "block_id": "b_06c21c9e83806d77",
+      "document_id": "bb860be80524568dc1f323740a4e09bb2a32d03daa060aa338758d1bb6b8799d",
+      "slide_no": 3,
+      "order_index": 1,
+      "text": "TCP guarantees ordered, reliable delivery of a byte stream.",
+      "provenance": "ocr",
+      "ocr_confidence": 0.99993,
+      "producer": null,
+      "bbox": [
+        0.09627,
+        0.265957,
+        0.68498,
+        0.307181
+      ]
+    },
+    {
+      "block_id": "b_99b475ecf6fea02c",
+      "document_id": "bb860be80524568dc1f323740a4e09bb2a32d03daa060aa338758d1bb6b8799d",
+      "slide_no": 3,
+      "order_index": 2,
+      "text": "UDP is connectionless and does not guarantee delivery.",
+      "provenance": "ocr",
+      "ocr_confidence": 0.99815,
+      "producer": null,
+      "bbox": [
+        0.09627,
+        0.329122,
+        0.65373,
+        0.369681
+      ]
+    }
+  ]
+}

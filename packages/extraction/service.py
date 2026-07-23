@@ -153,9 +153,15 @@ async def convert_file(
                     temp_file.write(chunk)
                     file_size_bytes += len(chunk)
 
-            # ---- 2. Hash the file (cache key) --------------------------
+            # ---- 2. Hash the file (cache key + stable document/block ids) --
             started_at = time.perf_counter()
             file_hash = hash_file(input_path)
+            # document_id anchors block_id generation; it must stay pinned to
+            # the ORIGINAL upload; unlike file_hash below (the extraction
+            # cache key) it is never rehashed off a converted PDF, since
+            # LibreOffice's PDF export embeds a fresh timestamp on every
+            # conversion and would make block_ids change on every run.
+            document_id = file_hash
 
             # ---- 3. PowerPoint conversion (needed before cache check) --
             conversion_warnings: list[str] = []
@@ -195,6 +201,7 @@ async def convert_file(
                 images_scale=images_scale,
                 ocr_language=ocr_language,
                 force_ocr=force_ocr,
+                document_id=document_id,
             )
             response["warnings"] = conversion_warnings + response["warnings"]
             if is_powerpoint:

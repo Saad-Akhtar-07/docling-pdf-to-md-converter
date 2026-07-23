@@ -1,11 +1,10 @@
-import hashlib
 import json
 import sqlite3
 from pathlib import Path
 from typing import Any
 
 from . import config
-from .utils import utc_now_iso
+from .utils import hash_file, utc_now_iso
 
 
 def get_cache_connection() -> sqlite3.Connection:
@@ -210,15 +209,6 @@ def read_cached_visual_description_by_hash(
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
     }
-
-
-def hash_file(path: Path) -> str:
-    """SHA-256 hash of raw file bytes — used as the extraction cache key."""
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        while chunk := f.read(65536):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def read_cached_extraction(
