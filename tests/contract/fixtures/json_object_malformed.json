@@ -1,0 +1,17 @@
+{
+  "id": "fixture-json-object-malformed-001",
+  "object": "chat.completion",
+  "created": 1700000002,
+  "model": "deepseek-v4-flash",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+        "role": "assistant",
+        "content": "Sure! Here's a fact about dogs: they typically have 4 legs and are loyal companions."
+      }
+    }
+  ],
+  "usage": { "prompt_tokens": 40, "completion_tokens": 60, "total_tokens": 100 }
+}

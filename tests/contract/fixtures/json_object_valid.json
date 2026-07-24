@@ -1,0 +1,14 @@
+{
+  "id": "fixture-json-object-ok-001",
+  "object": "chat.completion",
+  "created": 1700000001,
+  "model": "deepseek-v4-flash",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": { "role": "assistant", "content": "{\"animal\": \"dog\", \"legs\": 4}" }
+    }
+  ],
+  "usage": { "prompt_tokens": 40, "completion_tokens": 90, "total_tokens": 130 }
+}

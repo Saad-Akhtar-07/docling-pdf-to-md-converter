@@ -33,10 +33,16 @@ persistence = [
     "alembic>=1.13",
     "python-dotenv>=1.0",
 ]
+llm = [
+    "httpx>=0.27",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0",
+]
 dev = [
     "pytest>=8.0",
     "import-linter>=2.0",
     "httpx>=0.27",
+    "respx>=0.21",
 ]
 
 [tool.setuptools]
@@ -46,6 +52,7 @@ packages = [
     "slidevision.extraction",
     "slidevision.tutor_core",
     "slidevision.llm",
+    "slidevision.llm.prompts",
     "slidevision.persistence",
     "slidevision.persistence.repositories",
     "apps",
@@ -56,6 +63,7 @@ packages = [
 
 [tool.setuptools.package-data]
 "slidevision.extraction" = ["opencode_helper/*.mjs"]
+"slidevision.llm" = ["prompts/**/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

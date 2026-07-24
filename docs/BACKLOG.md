@@ -182,6 +182,56 @@ Deferred items surface here as modules are built. Empty at project start.
   `packages/persistence` is the module meant to own durable storage; revisit
   there.
 
+## From "packages/llm" module (OpenCode Zen client)
+
+- **`response_format: json_schema` is unusable on this gateway, for all
+  three models** (`scripts/probe_gateway.py` table): `deepseek-v4-pro` /
+  `deepseek-v4-flash` return HTTP 400 (`Upstream request failed`);
+  `mimo-v2.5` returns HTTP 200 but silently ignores the schema and returns
+  an unrelated shape. `structured.py` never sends it — schema is described
+  in-prompt and enforced by Pydantic validation instead. Re-probe if
+  OpenCode Zen changes its upstream providers; native schema mode would be
+  strictly better if it ever becomes reliable.
+
+- **All three models are reasoning models that spend `max_tokens` on hidden
+  `reasoning_content`/`reasoning` before the real answer.** `client.py`
+  defaults `max_tokens=1024`, which was enough in every probe/demo run, but
+  no purpose-specific tuning has been done. If a real prompt's completion
+  gets truncated (`finish_reason=length` with a short `content`), that's
+  this — raise the caller's `max_tokens`, not a client.py bug.
+
+- **`deepseek-v4-flash` returned empty `content` with `finish_reason=stop`
+  on ~1/6 identical `json_object` requests during probing** (harmless
+  variance in how much of the budget reasoning consumes, not a bug we can
+  fix client-side). The repair retry already absorbs this — an empty first
+  attempt just triggers the same repair path as an invalid one — but it's
+  worth knowing this is a real, observed gateway behavior and not a
+  hypothetical.
+
+- **No secondary-provider fallback.** §2.13 of the roadmap says "2 retries,
+  then fall back to secondary provider" — there is only one provider
+  (OpenCode Zen) configured today, so `client.py`'s retries exhaust into a
+  raised `LlmRequestError` with no fallback target. Add one if/when a
+  second provider is actually in scope.
+
+- **`LLM_COST_RATE_*` is unset for all three models** — every `llm_calls`
+  row logs `cost_usd=NULL` (by design: CLAUDE.md's "never guess" applied to
+  cost). Add real per-model USD-per-1M-token rates to `.env.local` once
+  they're known (OpenCode Zen's dashboard/invoice, not this module) to get
+  real cost tracking.
+
+- **`stream=True` aggregates the full SSE response before returning** —
+  `complete()`'s signature is request/response (`-> parsed result`), so
+  there is no generator/callback surface for incremental tokens yet. Fine
+  for probing "does streaming work"; a real streaming UX (tutor response
+  appearing token-by-token in `apps/web`) needs a different entrypoint,
+  deferred to whichever module builds turn generation.
+
+- **Only one real prompt exists**: `prompts/example/v1.md`, scaffolding used
+  by `scripts/demo_structured_call.py` to exercise the registry +
+  structured-output pipeline end to end. Real prompts (`assess_response`,
+  `plan_segment`, ...) belong to the modules that own that pedagogy.
+
 - **Pre-existing bug found while building this module:** `service.py`'s
   document registry (`upsert_document`, keyed on `file_hash`) hashes the
   *converted* PDF for PPT/PPTX/ODP uploads, and LibreOffice's PDF export
