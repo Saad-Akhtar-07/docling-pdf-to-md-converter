@@ -443,3 +443,66 @@ objectives, POST approve, apps/web PlanReviewPage)
   rather than via `react-router-dom`, since the whole app has exactly one
   real URL route. Revisit (add a router) if a second real route is ever
   needed — e.g. Module 4's session runtime page.
+
+## From "Session Runtime Skeleton" module (Module 4: packages/tutor_core,
+packages/graph, apps/api/routers/sessions.py)
+
+- **`select_action()` is a stub, by explicit instruction** — it always
+  returns `PROBE` and accepts any answer as resolving the current objective
+  unconditionally. No assessment, no real policy table (§2.8), no intent
+  router. This module exists purely to prove the state plumbing; Modules
+  5/6/8 replace the stub with real assessment, the policy table, and intent
+  classification respectively. `select_action`'s signature (pure function,
+  objective_order + objective_states + probing_objective_id + has_answer ->
+  action + updated states) is designed to keep working once a real
+  `assess_response` node feeds it a genuine verdict instead of "any answer
+  is correct."
+
+- **`generate_turn` is a deterministic string template, not an LLM call.**
+  `"Let's check your understanding: {statement}"` — no grounded,
+  action-constrained generation (that's Module 7), so nothing here is
+  logged to `llm_calls` (there's no LLM call to log). Citations (`§2.11`'s
+  turn response `citations[]`) are also not implemented for the same
+  reason — `retrieve_grounding` only resolves the target objective's own
+  statement, not an anchored source span.
+
+- **No `classify_intent` / side-channel handling (Module 8).** Every
+  incoming message is treated as an answer unconditionally; there is no
+  QUESTION/META/OFF_TASK path yet. `turns.intent` is always left `NULL`.
+
+- **Session creation requires an `APPROVED` plan** and rejects (409) a plan
+  with zero objectives — a judgment call, not explicitly in this module's
+  API spec, but consistent with Module 4 depending on Module 3 (a session
+  should only start once a plan has been reviewed and frozen). Revisit if a
+  demo/dev flow ever needs to start a session against a draft plan.
+
+- **`POST /sessions/{id}/turns` returns a single one-shot SSE event, not a
+  genuine token stream** — since `generate_turn` produces the whole message
+  synchronously (see above), there's nothing to stream incrementally yet.
+  The endpoint still speaks `text/event-stream` (one `event: turn` frame) so
+  the wire contract won't need to change once Module 7 makes generation
+  actually incremental.
+
+- **No `GET /sessions/{id}/trace` debug view** — that's explicitly Module
+  6's trace viewer, built once `POLICY_DECISION`/`OBJECTIVE_RESOLVED`/
+  `OBJECTIVE_DEFERRED` events carry real policy reasoning instead of the
+  stub's "always PROBE."
+
+- **Concurrency safety relies on a `SELECT ... FOR UPDATE` row lock on the
+  `sessions` row**, taken in `packages/graph/nodes.py::load_state` and held
+  until `persist_turn`/`return_existing` commits. This serializes concurrent
+  turns on the same session correctly (verified in
+  `tests/integration/test_turn_contract.py::test_concurrent_turns_on_same_session_do_not_corrupt_state`)
+  but means two genuinely concurrent turns on one session block on each
+  other rather than running in parallel — fine at single-student-per-session
+  scale, worth knowing if multi-tab/multi-device concurrent play is ever a
+  real use case.
+
+- **No session-level termination rules** (§2.8: 40-turn cap, 45-minute wall
+  clock, 3 consecutive OFF_TASK) — a session only completes when every
+  objective has been walked linearly. Module 6/8's job.
+
+- **`apps/web` has no session/tutoring UI yet** — this module's frontend
+  scope (split view: chat left, cited slide right, objective progress rail)
+  was not built; only the API + graph + tutor_core layers. `apps/web` still
+  ends at the Module 3 plan review page.

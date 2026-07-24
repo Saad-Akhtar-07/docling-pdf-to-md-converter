@@ -1,4 +1,4 @@
-"""plan review: reviewed flag and plan_edits audit table
+""""plan review: reviewed flag and plan_edits audit table
 
 Revision ID: cf762c763b6f
 Revises: 5a533576cf46

@@ -25,7 +25,7 @@ api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "pydantic-settings>=2.0",
-    "slidevision[extraction,persistence,planbuilder]",
+    "slidevision[extraction,persistence,planbuilder,graph]",
 ]
 persistence = [
     "sqlalchemy>=2.0",
@@ -43,6 +43,11 @@ planbuilder = [
     "rapidfuzz>=3.9",
     "slidevision[llm,persistence]",
 ]
+graph = [
+    "langgraph>=0.2",
+    "pydantic>=2.0",
+    "slidevision[persistence]",
+]
 dev = [
     "pytest>=8.0",
     "import-linter>=2.0",
@@ -56,6 +61,7 @@ packages = [
     "slidevision",
     "slidevision.extraction",
     "slidevision.tutor_core",
+    "slidevision.graph",
     "slidevision.llm",
     "slidevision.llm.prompts",
     "slidevision.planbuilder",

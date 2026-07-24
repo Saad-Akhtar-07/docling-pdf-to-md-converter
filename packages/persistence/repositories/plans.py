@@ -101,6 +101,18 @@ class PlanRepository:
     def get_objective(self, objective_id: uuid.UUID) -> LearningObjective | None:
         return self.session.get(LearningObjective, objective_id)
 
+    def get_ordered_objectives(self, plan_id: uuid.UUID) -> list[LearningObjective]:
+        """Every objective in the plan, in curriculum order (unit
+        order_index, then objective order_index within the unit) -- the
+        order Module 4's session loop walks objectives in, and the same
+        ordering apps/api/jobs/plan_build.py already uses for prerequisite
+        indices."""
+        plan = self.get_plan(plan_id)
+        if plan is None:
+            raise ValueError(f"no learning_plans row with id={plan_id}")
+        units = sorted(plan.units, key=lambda unit: unit.order_index)
+        return [objective for unit in units for objective in sorted(unit.objectives, key=lambda o: o.order_index)]
+
     def update_objective(
         self,
         objective_id: uuid.UUID,

@@ -11,7 +11,15 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from slidevision.persistence.enums import DocumentStatus, PlanEditAction, PlanStatus, Provenance
+from slidevision.persistence.enums import (
+    DocumentStatus,
+    ObjectiveStatus,
+    PedagogicalAction,
+    PlanEditAction,
+    PlanStatus,
+    Provenance,
+    SessionStatus,
+)
 
 
 class DocumentCreateResponse(BaseModel):
@@ -140,4 +148,72 @@ class PlanEditOut(BaseModel):
     action: PlanEditAction
     before: dict[str, Any] | None
     after: dict[str, Any] | None
+    created_at: datetime
+
+
+# --- Module 4: session runtime skeleton (docs/…§2.11) -----------------------
+
+
+class ProgressOut(BaseModel):
+    resolved: int
+    deferred: int
+    total: int
+
+
+class ObjectiveProgressOut(BaseModel):
+    objective_id: uuid.UUID
+    statement: str
+    status: ObjectiveStatus
+
+
+class SessionCreateRequest(BaseModel):
+    document_id: uuid.UUID
+    plan_id: uuid.UUID
+
+
+class TurnOut(BaseModel):
+    turn_id: uuid.UUID
+    turn_index: int
+    session_id: uuid.UUID
+    action: PedagogicalAction
+    objective_id: uuid.UUID | None
+    objective_statement: str | None
+    tutor_message: str
+    student_message: str | None
+    session_complete: bool
+    progress: ProgressOut
+
+
+class SessionOut(BaseModel):
+    id: uuid.UUID
+    document_id: uuid.UUID
+    plan_id: uuid.UUID
+    status: SessionStatus
+    current_objective_id: uuid.UUID | None
+    turn_count: int
+    started_at: datetime
+    ended_at: datetime | None
+    progress: ProgressOut
+    objectives: list[ObjectiveProgressOut]
+
+
+class SessionCreateResponse(BaseModel):
+    session: SessionOut
+    turn: TurnOut
+
+
+class TurnRequest(BaseModel):
+    message: str
+    idempotency_key: str
+
+
+class TurnHistoryItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    index: int
+    student_message: str
+    action: PedagogicalAction | None
+    tutor_message: str | None
+    objective_id: uuid.UUID | None
     created_at: datetime
