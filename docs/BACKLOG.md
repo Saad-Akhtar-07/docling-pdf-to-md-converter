@@ -506,3 +506,72 @@ packages/graph, apps/api/routers/sessions.py)
   scope (split view: chat left, cited slide right, objective progress rail)
   was not built; only the API + graph + tutor_core layers. `apps/web` still
   ends at the Module 3 plan review page.
+
+## From "Assessment" module (Module 5: packages/tutor_core/consistency.py,
+packages/graph/assessment.py, packages/llm/prompts/assess_response)
+
+- **`select_action` (the Module 4 stub) still ignores the assessment
+  entirely.** Nodes 4/5 (`assess_response`, `consistency_check`) now run on
+  every real turn and their output is written to `ASSESSMENT` /
+  `CONSISTENCY_REPAIR` / `NOVEL_MISCONCEPTION` turn_events, but node 7 still
+  accepts any answer unconditionally per its explicit Module 4 contract —
+  by this module's own instruction ("DO NOT implement the policy"). Module
+  6 is what makes the policy actually read `state["assessment"]` instead of
+  just `state["message"] is not None`.
+
+- **Consequence of the above: every real turn with a student message now
+  makes one real LLM call (purpose `assess`) even though the result is
+  currently discarded by the policy.** This is by design for this module
+  (§2.7 lists nodes 4/5 as in-scope, and turn_events need real assessment
+  data for Module 10's evaluation harness) but it does mean
+  `tests/integration/test_turn_contract.py` — written for Module 4, when
+  the graph made no LLM calls at all — now requires a reachable
+  `OPENCODE_API_KEY` and real network access to pass, and runs measurably
+  slower (one gateway round-trip per turn with a message) than it did
+  before this module. Nothing in that test file was changed; its
+  environment requirements just grew as a side effect of wiring nodes 4/5
+  into the graph it exercises. Worth revisiting once Module 6 makes the
+  assessment call load-bearing anyway — at that point the dependency is
+  unavoidable rather than incidental.
+
+- **Expected-idea ids used in the assessment prompt/schema are local,
+  per-call labels (`idea_1`, `idea_2`, ...), not `objective_expected_ideas.id`.**
+  Same rationale as `planbuilder/evidence.py`'s `prerequisite_indices`:
+  reliably reproducing a UUID is asking for trouble, picking from a short
+  list is not. `build_evidence_card()` assigns them by sorting
+  `(block_id, char_start, id)` for determinism (turn contract rule 3), but
+  the mapping back to a real `objective_expected_ideas` row for citation
+  purposes isn't persisted anywhere — Module 7's grounded generation will
+  need its own resolution from `matched_idea_ids`/`missing_idea_ids` back
+  to actual anchored spans.
+
+- **`prerequisite_gap_objective_id` is taken from the model as-is, with no
+  repair.** The four §1.9 consistency rules and the id/quote/misconception
+  structural repairs don't validate that this field, when set, actually
+  names a real objective id from the plan — there was no "prerequisite
+  gap" scenario in this module's fixture set to catch it, and nothing
+  downstream reads the field yet (Module 6's `REVISIT_PREREQ` action is
+  the first consumer). Add validation once something depends on it.
+
+- **The 40-case fixture set (`tests/fixtures/assessments.jsonl`, built by
+  `tests/fixtures/generate_assessments.py`) uses three synthetic evidence
+  cards** (MapReduce shuffle, TCP handshake, photosynthesis light
+  reactions) — same reasoning as Module 0.5's synthetic decks: no real
+  lecture deck/plan exists in the repo yet to draw a hand-labelled set
+  from. Swap in cards built from a real approved plan's objectives
+  whenever one exists, keeping the same JSONL shape.
+
+- **`scripts/run_assessment_fixture_suite.py` is a real-LLM evaluation
+  report, not a pytest test** — verdict agreement isn't deterministic
+  enough for a CI pass/fail gate the way the mocked `tests/contract` suite
+  is (matches §2.15's "Pedagogical (offline)" layer being separate from
+  the automated layers). First run: 36/40 (90%) verdict agreement, no
+  `StructuredOutputError` fallbacks triggered; all 4 misses were adjacent
+  verdicts (`partial`↔`dont_know`, `confused`↔`dont_know`, `correct`↔`partial`),
+  clustered on very short (one-word) answers and one pure-analogy answer
+  with zero card vocabulary — never a wrong-direction miss (e.g.
+  `correct`↔`incorrect`). Re-run and update this note if the prompt changes.
+
+- **No offline LLM-judge over sampled traces yet** (§1.9: "Keep an LLM
+  judge, but offline, over sampled traces") — explicitly deferred to
+  Module 10's evaluation harness, not this module's scope.

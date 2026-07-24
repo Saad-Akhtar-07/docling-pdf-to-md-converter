@@ -161,6 +161,38 @@ def persist_turn(state: TurnState) -> dict:
             session_id=session_id, turn_id=turn.id, event_type="STUDENT_ANSWER", payload={"message": message}
         )
 
+    assessment = state.get("assessment")
+    if assessment is not None:
+        assessed_objective_id = state.get("assessed_objective_id")
+        session_repo.add_turn_event(
+            session_id=session_id,
+            turn_id=turn.id,
+            event_type="ASSESSMENT",
+            payload={
+                "objective_id": str(assessed_objective_id) if assessed_objective_id else None,
+                "assessment": assessment.model_dump(),
+                "used_safe_default": state.get("assessment_used_safe_default", False),
+            },
+        )
+        for repair in state.get("assessment_repairs", []):
+            session_repo.add_turn_event(
+                session_id=session_id, turn_id=turn.id, event_type="CONSISTENCY_REPAIR", payload=repair.model_dump()
+            )
+        if assessment.misconception_novel_text:
+            # A research signal (the card is incomplete) -- logged loudly as
+            # its own event type, not just buried in the assessment payload
+            # or a generic repair row (§1.9, Module 5 prompt).
+            session_repo.add_turn_event(
+                session_id=session_id,
+                turn_id=turn.id,
+                event_type="NOVEL_MISCONCEPTION",
+                payload={
+                    "objective_id": str(assessed_objective_id) if assessed_objective_id else None,
+                    "text": assessment.misconception_novel_text,
+                    "student_answer": message,
+                },
+            )
+
     session_repo.add_turn_event(
         session_id=session_id,
         turn_id=turn.id,

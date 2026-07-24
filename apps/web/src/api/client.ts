@@ -21,6 +21,7 @@ export type ObjectivePatch = components["schemas"]["ObjectivePatch"];
 export type UnitOut = components["schemas"]["UnitOut"];
 export type PlanOut = components["schemas"]["PlanOut"];
 export type PlanEditOut = components["schemas"]["PlanEditOut"];
+export type PlanBuildResponse = components["schemas"]["PlanBuildResponse"];
 export type BlockOut = components["schemas"]["BlockOut"];
 
 async function unwrap<T>(promise: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
@@ -62,6 +63,12 @@ export function getDocumentBlocks(documentId: string, slide?: number) {
     client.GET("/documents/{document_id}/blocks", {
       params: { path: { document_id: documentId }, query: slide ? { slide } : undefined },
     }),
+  );
+}
+
+export function buildPlan(documentId: string) {
+  return unwrap(
+    client.POST("/documents/{document_id}/plans", { params: { path: { document_id: documentId } } }),
   );
 }
 

@@ -17,6 +17,7 @@ export default function PlanReviewPage({ planId }) {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isApproving, setIsApproving] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +47,19 @@ export default function PlanReviewPage({ planId }) {
     setPlan(latest);
     return latest;
   }
+
+  // Mirrors apps/api/jobs/plan_build.py::is_incomplete -- the build job
+  // persists incrementally, so a reviewer can land here while it's still
+  // running in the background (apps/web/src/pages/DocumentsPage.jsx lets
+  // them move on as soon as the first objectives exist).
+  const isBuildIncomplete = plan
+    ? plan.units.length === 0 ||
+      plan.units.some(
+        (u) =>
+          u.objectives.length === 0 ||
+          u.objectives.some((o) => o.expected_ideas.length === 0 && o.misconceptions.length === 0),
+      )
+    : false;
 
   const readOnly = plan ? plan.status !== "draft" : true;
   const selectedUnit = plan?.units.find((u) => u.id === selectedUnitId) ?? null;
@@ -153,6 +167,14 @@ export default function PlanReviewPage({ planId }) {
     });
   }
 
+  async function handleRefresh() {
+    setIsRefreshing(true);
+    await withErrorHandling(async () => {
+      await reload();
+    });
+    setIsRefreshing(false);
+  }
+
   async function handleApprove() {
     setIsApproving(true);
     await withErrorHandling(async () => {
@@ -195,6 +217,16 @@ export default function PlanReviewPage({ planId }) {
               {unreviewedLowConfidence.length} low-confidence objective(s) still need review
             </span>
           ) : null}
+          {isBuildIncomplete ? (
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="inline-flex h-10 items-center justify-center rounded border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400"
+            >
+              {isRefreshing ? "Refreshing…" : "Refresh"}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={handleApprove}
@@ -205,6 +237,14 @@ export default function PlanReviewPage({ planId }) {
           </button>
         </div>
       </div>
+
+      {isBuildIncomplete ? (
+        <div className="flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />
+          This plan is still being built in the background (some units/objectives/evidence are not in yet).
+          Click Refresh to pull in anything new.
+        </div>
+      ) : null}
 
       {error ? (
         <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>

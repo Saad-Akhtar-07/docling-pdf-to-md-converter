@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from langgraph.graph import END, StateGraph
 
+from slidevision.graph.assessment import assess_response_node, consistency_check_node
 from slidevision.graph.nodes import (
     generate_turn,
     load_state,
@@ -22,12 +23,14 @@ from slidevision.graph.state import TurnState
 
 
 def _route_after_load(state: TurnState) -> str:
-    return "return_existing" if state["is_duplicate"] else "select_action"
+    return "return_existing" if state["is_duplicate"] else "assess_response"
 
 
 def build_graph():
     graph = StateGraph(TurnState)
     graph.add_node("load_state", load_state)
+    graph.add_node("assess_response", assess_response_node)
+    graph.add_node("consistency_check", consistency_check_node)
     graph.add_node("select_action", select_action_node)
     graph.add_node("retrieve_grounding", retrieve_grounding)
     graph.add_node("generate_turn", generate_turn)
@@ -38,8 +41,10 @@ def build_graph():
     graph.add_conditional_edges(
         "load_state",
         _route_after_load,
-        {"return_existing": "return_existing", "select_action": "select_action"},
+        {"return_existing": "return_existing", "assess_response": "assess_response"},
     )
+    graph.add_edge("assess_response", "consistency_check")
+    graph.add_edge("consistency_check", "select_action")
     graph.add_edge("select_action", "retrieve_grounding")
     graph.add_edge("retrieve_grounding", "generate_turn")
     graph.add_edge("generate_turn", "persist_turn")

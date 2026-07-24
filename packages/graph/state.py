@@ -16,7 +16,7 @@ from typing import TypedDict
 from sqlalchemy.orm import Session as DbSession
 
 from slidevision.graph.result import TutorTurn
-from slidevision.tutor_core import ObjectiveState, PedagogicalAction
+from slidevision.tutor_core import ConsistencyRepair, EvidenceCard, ObjectiveAssessment, ObjectiveState, PedagogicalAction
 
 
 class OrderedObjective(TypedDict):
@@ -41,6 +41,14 @@ class TurnState(TypedDict, total=False):
     objectives: list[OrderedObjective]  # plan (curriculum) order
     objective_states: dict[str, ObjectiveState]  # keyed by str(objective_id)
     node_start_perf: float  # time.perf_counter() at load_state, for latency_ms
+
+    # --- assess_response (node 4) / consistency_check (node 5) ---
+    raw_assessment: ObjectiveAssessment | None  # pre-repair, straight from the LLM (or the safe default)
+    evidence_card: EvidenceCard | None
+    assessed_objective_id: uuid.UUID | None
+    assessment_used_safe_default: bool
+    assessment: ObjectiveAssessment | None  # post-repair; None whenever there was no answer to assess
+    assessment_repairs: list[ConsistencyRepair]
 
     # --- select_action (stub) ---
     action: PedagogicalAction

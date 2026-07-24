@@ -30,13 +30,32 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
+  function navigateToReview(planId) {
+    window.history.pushState({}, "", `/plans/${planId}/review`);
+    setReviewPlanId(planId);
+  }
+
+  function navigateToDocuments() {
+    window.history.pushState({}, "", "/");
+    setReviewPlanId(null);
+  }
+
   if (reviewPlanId) {
     return (
       <main className="min-h-screen bg-zinc-100 text-zinc-950">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-          <header className="border-b border-zinc-300 pb-5">
-            <p className="text-sm font-medium text-teal-700">SlideVision Adaptive Tutor</p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-normal text-zinc-950">Review Plan</h1>
+          <header className="flex items-center justify-between border-b border-zinc-300 pb-5">
+            <div>
+              <p className="text-sm font-medium text-teal-700">SlideVision Adaptive Tutor</p>
+              <h1 className="mt-1 text-3xl font-semibold tracking-normal text-zinc-950">Review Plan</h1>
+            </div>
+            <button
+              type="button"
+              onClick={navigateToDocuments}
+              className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100"
+            >
+              ← Back to Documents
+            </button>
           </header>
           <PlanReviewPage planId={reviewPlanId} />
         </div>
@@ -70,7 +89,11 @@ export default function App() {
           </nav>
         </header>
 
-        {activeTab === "documents" ? <DocumentsPage /> : <ExtractorDebugPage />}
+        {activeTab === "documents" ? (
+          <DocumentsPage onNavigateToReview={navigateToReview} />
+        ) : (
+          <ExtractorDebugPage />
+        )}
       </div>
     </main>
   );

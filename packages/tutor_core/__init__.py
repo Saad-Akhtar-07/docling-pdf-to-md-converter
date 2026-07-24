@@ -1,4 +1,15 @@
+from slidevision.tutor_core.consistency import (
+    apply_consistency_rules,
+    repair_assessment,
+    repair_evidence_quote,
+    repair_idea_references,
+    repair_misconception_reference,
+)
 from slidevision.tutor_core.models import (
+    ConsistencyRepair,
+    EvidenceCard,
+    EvidenceIdea,
+    EvidenceMisconception,
     Intent,
     ObjectiveAssessment,
     ObjectiveState,
@@ -17,4 +28,13 @@ __all__ = [
     "TurnIntent",
     "SelectActionResult",
     "select_action",
+    "ConsistencyRepair",
+    "EvidenceCard",
+    "EvidenceIdea",
+    "EvidenceMisconception",
+    "apply_consistency_rules",
+    "repair_assessment",
+    "repair_evidence_quote",
+    "repair_idea_references",
+    "repair_misconception_reference",
 ]

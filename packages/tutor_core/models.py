@@ -77,3 +77,51 @@ class ObjectiveState(BaseModel):
     active_misconception_id: str | None = None
     last_action: PedagogicalAction | None = None
     event_ids: list[str] = Field(default_factory=list)
+
+
+class EvidenceIdea(BaseModel):
+    """One expected idea, as presented to the assessment LLM call.
+
+    `id` is a short, stable-within-this-turn local reference ("idea_1",
+    "idea_2", ...) assigned in card order by the caller building the card --
+    not `objective_expected_ideas.id` (a UUID). Same rationale as
+    planbuilder/evidence.py's `prerequisite_indices`: asking a model to
+    reliably reproduce a UUID is asking for trouble; asking it to pick from
+    a short list is not.
+    """
+
+    id: str
+    idea: str
+
+
+class EvidenceMisconception(BaseModel):
+    code: str
+    text: str
+
+
+class EvidenceCard(BaseModel):
+    """Read-only projection of one objective's evidence card, pure data --
+    everything consistency.py needs to validate an ObjectiveAssessment
+    against, with no DB/LLM dependency of its own."""
+
+    objective_id: str
+    expected_ideas: list[EvidenceIdea] = Field(default_factory=list)
+    known_misconceptions: list[EvidenceMisconception] = Field(default_factory=list)
+
+    def known_idea_ids(self) -> set[str]:
+        return {idea.id for idea in self.expected_ideas}
+
+    def known_misconception_codes(self) -> set[str]:
+        return {m.code for m in self.known_misconceptions}
+
+
+class ConsistencyRepair(BaseModel):
+    """One deterministic correction applied to a raw ObjectiveAssessment --
+    docs/ARCHITECTURE_REVIEW_AND_ROADMAP.md §1.9. Written to a
+    CONSISTENCY_REPAIR turn_event with `before`/`after` so every repair is
+    auditable after the fact."""
+
+    rule: str
+    field: str
+    before: str | list[str] | bool | None
+    after: str | list[str] | bool | None
