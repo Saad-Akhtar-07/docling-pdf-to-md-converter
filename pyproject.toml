@@ -24,6 +24,8 @@ extraction = [
 api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
+    "pydantic-settings>=2.0",
+    "slidevision[extraction,persistence]",
 ]
 persistence = [
     "sqlalchemy>=2.0",
@@ -34,6 +36,7 @@ persistence = [
 dev = [
     "pytest>=8.0",
     "import-linter>=2.0",
+    "httpx>=0.27",
 ]
 
 [tool.setuptools]
@@ -47,6 +50,8 @@ packages = [
     "slidevision.persistence.repositories",
     "apps",
     "apps.api",
+    "apps.api.routers",
+    "apps.api.jobs",
 ]
 
 [tool.setuptools.package-data]

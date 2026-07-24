@@ -4,35 +4,34 @@ Deferred items surface here as modules are built. Empty at project start.
 
 ## From "Database Schema" module (packages/persistence, docker-compose, Alembic)
 
-- **No API routes, job runner, or extraction wiring populate these tables
-  yet.** This module is schema-only per its own instructions ("DO NOT: write
-  any API routes, any LLM code, any business logic"). Module 1's extraction
-  job runner is what will actually call `DocumentRepository`/etc. from real
-  uploads.
+- ~~No API routes, job runner, or extraction wiring populate these tables
+  yet.~~ **Resolved by the "Document Registry" module**: `apps/api` now
+  does exactly this.
 
-- **`documents.status` values (`pending`/`processing`/`ready`/`failed`) are
-  this module's own judgment call**, not given explicitly anywhere in
-  §2.10 (unlike `learning_plans.status` and `sessions.status`, which the
-  roadmap spells out inline). Confirm/adjust once Module 1's job runner
-  defines the actual document lifecycle.
+- ~~`documents.status` values are this module's own judgment call.~~
+  **Resolved**: the "Document Registry" module's prompt pinned down the
+  exact lifecycle (`uploaded -> extracting -> ready | failed`); enum values
+  renamed to match (`UPLOADED`/`EXTRACTING` replacing the old
+  `PENDING`/`PROCESSING` guesses).
 
 - **No `users` table exists.** `documents.user_id` / `sessions.user_id` are
   bare, unconstrained UUID columns — Module 1 explicitly lists "multi-user
-  auth" under **Future**, so there's nothing to FK against yet. Add the FK
-  (and decide on cascade behavior for a deleted user) once auth lands.
+  auth" under **Future**, so there's nothing to FK against yet. The
+  "Document Registry" module hardcodes a fixed dev user id
+  (`apps/api/routers/documents.py::DEV_USER_ID`,
+  `00000000-0000-0000-0000-000000000001`) on every upload — replace with
+  the real authenticated user once auth lands, and add the FK then.
 
-- **`document_blocks.id` / `document_id` type mismatch with the extraction
-  module's current output is not reconciled.** `packages/persistence` makes
-  `documents.id` a DB-generated UUID (consistent with every other PK in
-  §2.10) and `document_blocks.id` the content-derived hash string
-  `packages/extraction/blocks.py::make_block_id` already produces (to
-  preserve the "stable across re-runs" contract Module 0.5 tested). But
-  `make_block_id` hashes `document_id` as one of its inputs, and extraction
-  currently generates its own hash-based `document_id`, not a UUID (see the
-  existing BACKLOG entry below about `upsert_document` hashing the converted
-  PDF). Module 1's document registry wiring needs to decide how the two
-  reconcile — e.g. pass the DB-issued UUID into extraction as the
-  `document_id` input, rather than letting extraction mint its own.
+- ~~`document_blocks.id` / `document_id` type mismatch with the extraction
+  module's current output is not reconciled.~~ **Resolved by the "Document
+  Registry" module**: `apps/api/jobs/extraction.py::run_extraction_job`
+  passes `str(document_id)` (the DB-issued UUID) into
+  `extract_document(..., document_id=...)`, so `make_block_id` hashes the
+  real UUID rather than extraction minting its own hash-based id. The
+  pre-existing `upsert_document`/`file_hash` bug noted below is still
+  unfixed, but it's now fully isolated to the legacy SQLite-cached debug
+  extractor (`packages/extraction/service.py`, port 5052) — `apps/api`
+  never calls `upsert_document` at all.
 
 - **`objective_expected_ideas.block_id` and every cross-aggregate FK from
   session/turn data back into plan structure use `ON DELETE RESTRICT`**
@@ -57,6 +56,83 @@ Deferred items surface here as modules are built. Empty at project start.
 
 - **`document_blocks.embedding` (semantic fallback retrieval, §2.18 v1.1
   extension point) not added.** Explicitly deferred to v1.1 per the roadmap.
+
+## From "Document Registry" module (apps/api, apps/web Documents tab)
+
+- **No authentication — a single hardcoded dev user id.**
+  `apps/api/routers/documents.py::DEV_USER_ID =
+  uuid.UUID("00000000-0000-0000-0000-000000000001")` is attributed to every
+  uploaded document, per this module's explicit instruction. Replace with
+  real auth (§2.10's Future item) when that module is built; nothing else
+  needs to change since `documents.user_id` is already a bare UUID column.
+
+- **Re-upload idempotency is keyed on content hash, with two chosen
+  behaviors — recorded here since the module asked for the rationale to be
+  written down, not just implemented:**
+  - Same bytes, existing document not `FAILED` → **200**, no-op, existing
+    `document_id` returned, extraction is NOT re-triggered. Re-extracting a
+    document whose blocks are already ready (or already in flight) would
+    just burn OCR/vision cost for identical output, and would fight the
+    in-flight job over the same rows.
+  - Same bytes, existing document `FAILED` → **202**, treated as a retry:
+    status resets to `uploaded`, extraction is rescheduled against the same
+    `document_id`. Re-uploading a file that previously failed is exactly
+    what a user does to ask "try again" — there's no separate retry
+    endpoint, so this is the only way to retry via the API as built.
+  - Not supported: retrying with *different* bytes under the same
+    `document_id` (e.g. "I fixed the corrupt file, same upload slot").
+    Different content hash → different `document_id` by design; this is
+    arguably correct (different bytes are a different document) but worth
+    a product decision later if it surprises users.
+
+- **No `GET /documents` list endpoint.** Module 1's own API list is exactly
+  `POST /documents`, `GET /documents/{id}`, `GET /documents/{id}/blocks`,
+  `GET /health` — no list route. `apps/web`'s Documents tab only ever shows
+  the most recently uploaded document (in-memory React state); there's no
+  way to browse previously uploaded documents from the UI after a page
+  reload. Add a list endpoint + a document picker when that's needed.
+
+- **`VITE_API_BASE_URL` was repurposed.** It previously pointed the
+  extractor-debug tool (`apps/web/src/utils/localExtractorApi.js`) at a
+  base URL but was always blank in both env files, so in practice it did
+  nothing (the tool always fell back to the `/local-extractor` Vite-proxy
+  path). It now points the new typed `apps/web/src/api` client at `apps/api`
+  (`http://localhost:8000` by default) per this module's explicit
+  instruction ("the only VITE_ var"). `localExtractorApi.js` no longer reads
+  it at all — the extractor-debug tool unconditionally uses the proxy path,
+  which is what it was already doing in every configured environment.
+
+- **`apps/web/src/api/client.ts`'s `uploadDocument` needs a manual
+  `bodySerializer`,** not openapi-fetch's default multipart handling —
+  passing `client.POST("/documents", { body: { file } })` alone produced an
+  HTTP 422 against FastAPI's `File(...)` parameter (confirmed live, not
+  theorized). The generated type for the upload body field is `string`
+  (OpenAPI's `format: binary` has no native "File" type), cast to `unknown`
+  then `string` at that one call site. If openapi-fetch changes its
+  multipart defaults in a future upgrade, re-check whether the manual
+  `bodySerializer` is still needed.
+
+- **apps/api's OpenAPI spec only documents `200` for `POST /documents`,
+  never the `202` it can actually return.** FastAPI infers the documented
+  success status from the route decorator; this route sets
+  `response.status_code` dynamically (200 vs. 202) instead of declaring a
+  fixed one, and FastAPI doesn't introspect that. The response *body*
+  shape (`DocumentCreateResponse`) is identical either way, so the
+  generated TS types are unaffected — this is a spec-accuracy gap, not a
+  functional one. Fix by adding `responses={202: {...}}` to the decorator
+  if/when the OpenAPI spec itself needs to be authoritative (e.g. published
+  externally).
+
+- **`tests/integration/test_documents_api.py`'s per-test cleanup
+  occasionally leaves a document's upload directory behind under
+  `data/uploads/`** (Postgres rows are always cleaned — confirmed via
+  `SELECT count(*) FROM documents` after a full run — only the on-disk
+  directory can survive). `shutil.rmtree(..., ignore_errors=True)` silently
+  swallows what looks like a Windows file-handle lock from
+  `packages/extraction`'s PDF rendering, not from `apps/api` itself.
+  Harmless (gitignored, disposable dev data) but not root-caused — chasing
+  it would mean touching `packages/extraction` internals, out of scope for
+  this module.
 
 ## From Module 0.5 (provenance-tagged Block extraction)
 

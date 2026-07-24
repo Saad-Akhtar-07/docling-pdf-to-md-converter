@@ -12,7 +12,6 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -44,13 +43,21 @@ from slidevision.persistence.models import (
 from slidevision.persistence.repositories import DocumentRepository, PlanRepository, SessionRepository
 
 
-@pytest.fixture(autouse=True)
-def _require_database():
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-    except Exception as exc:  # pragma: no cover - environment guard
-        pytest.skip(f"Postgres not reachable at DATABASE_URL: {exc}")
+def _new_document(documents: DocumentRepository, **overrides) -> Document:
+    """documents.create() now requires content_hash/storage_uri (added by the
+    Document Registry module for upload idempotency and file location) that
+    these schema-level tests don't otherwise care about — fill in throwaway
+    defaults so each call site doesn't have to.
+    """
+    defaults = dict(
+        title="Deck",
+        source_filename="d.pdf",
+        mime="application/pdf",
+        content_hash=uuid.uuid4().hex,
+        storage_uri="data/uploads/test/d.pdf",
+    )
+    defaults.update(overrides)
+    return documents.create(**defaults)
 
 
 @pytest.fixture
@@ -78,7 +85,8 @@ def _seed_full_graph(db: Session):
     plans = PlanRepository(db)
     sessions = SessionRepository(db)
 
-    document = documents.create(
+    document = _new_document(
+        documents,
         title="Week 15 IR Optimization",
         source_filename="week15.pptx",
         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -179,7 +187,7 @@ def test_one_row_per_table(db: Session):
 def test_learning_plans_unique_document_version(db: Session):
     documents = DocumentRepository(db)
     plans = PlanRepository(db)
-    document = documents.create(title="Deck", source_filename="d.pdf", mime="application/pdf")
+    document = _new_document(documents)
     plans.create_plan(document_id=document.id, version=1)
     db.commit()
 
@@ -192,7 +200,7 @@ def test_turns_idempotency_key_unique(db: Session):
     documents = DocumentRepository(db)
     plans = PlanRepository(db)
     sessions = SessionRepository(db)
-    document = documents.create(title="Deck", source_filename="d.pdf", mime="application/pdf")
+    document = _new_document(documents)
     plan = plans.create_plan(document_id=document.id, version=1)
     session = sessions.create_session(document_id=document.id, plan_id=plan.id)
     key = str(uuid.uuid4())
@@ -206,7 +214,7 @@ def test_turns_idempotency_key_unique(db: Session):
 
 def test_document_blocks_cascade_on_document_delete(db: Session):
     documents = DocumentRepository(db)
-    document = documents.create(title="Deck", source_filename="d.pdf", mime="application/pdf")
+    document = _new_document(documents)
     block = documents.add_block(
         block_id="c" * 64,
         document_id=document.id,
@@ -226,7 +234,7 @@ def test_document_blocks_cascade_on_document_delete(db: Session):
 def test_learning_plans_document_restrict_on_delete(db: Session):
     documents = DocumentRepository(db)
     plans = PlanRepository(db)
-    document = documents.create(title="Deck", source_filename="d.pdf", mime="application/pdf")
+    document = _new_document(documents)
     plans.create_plan(document_id=document.id, version=1)
     db.commit()
 
@@ -239,7 +247,7 @@ def test_learning_plans_document_restrict_on_delete(db: Session):
 def test_learning_units_cascade_on_plan_delete(db: Session):
     documents = DocumentRepository(db)
     plans = PlanRepository(db)
-    document = documents.create(title="Deck", source_filename="d.pdf", mime="application/pdf")
+    document = _new_document(documents)
     plan = plans.create_plan(document_id=document.id, version=1)
     unit = plans.add_unit(plan_id=plan.id, title="Unit", order_index=0)
     db.commit()
@@ -254,7 +262,7 @@ def test_sessions_cascade_turns_and_events_on_session_delete(db: Session):
     documents = DocumentRepository(db)
     plans = PlanRepository(db)
     sessions = SessionRepository(db)
-    document = documents.create(title="Deck", source_filename="d.pdf", mime="application/pdf")
+    document = _new_document(documents)
     plan = plans.create_plan(document_id=document.id, version=1)
     session = sessions.create_session(document_id=document.id, plan_id=plan.id)
     turn = sessions.add_turn(
@@ -273,7 +281,7 @@ def test_sessions_cascade_turns_and_events_on_session_delete(db: Session):
 def test_objective_expected_idea_restricts_block_delete(db: Session):
     documents = DocumentRepository(db)
     plans = PlanRepository(db)
-    document = documents.create(title="Deck", source_filename="d.pdf", mime="application/pdf")
+    document = _new_document(documents)
     block = documents.add_block(
         block_id="d" * 64,
         document_id=document.id,

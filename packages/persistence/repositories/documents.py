@@ -11,7 +11,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from slidevision.persistence.enums import DocumentStatus
+from slidevision.persistence.enums import DocumentStatus, Provenance
 from slidevision.persistence.models import Document, DocumentBlock
 
 
@@ -25,22 +25,33 @@ class DocumentRepository:
         title: str,
         source_filename: str,
         mime: str,
+        content_hash: str,
+        storage_uri: str,
+        id: uuid.UUID | None = None,
         user_id: uuid.UUID | None = None,
-        status: DocumentStatus = DocumentStatus.PENDING,
+        status: DocumentStatus = DocumentStatus.UPLOADED,
     ) -> Document:
         document = Document(
             title=title,
             source_filename=source_filename,
             mime=mime,
+            content_hash=content_hash,
+            storage_uri=storage_uri,
             user_id=user_id,
             status=status,
         )
+        if id is not None:
+            document.id = id
         self.session.add(document)
         self.session.flush()
         return document
 
     def get(self, document_id: uuid.UUID) -> Document | None:
         return self.session.get(Document, document_id)
+
+    def get_by_content_hash(self, content_hash: str) -> Document | None:
+        stmt = select(Document).where(Document.content_hash == content_hash)
+        return self.session.scalars(stmt).first()
 
     def list(self) -> list[Document]:
         return list(self.session.scalars(select(Document).order_by(Document.created_at)))
@@ -53,7 +64,7 @@ class DocumentRepository:
         slide_no: int,
         order_index: int,
         text: str,
-        provenance,
+        provenance: Provenance,
         ocr_confidence: float | None = None,
         producer: str | None = None,
         bbox: list[float] | None = None,
@@ -79,3 +90,11 @@ class DocumentRepository:
             stmt = stmt.where(DocumentBlock.slide_no == slide_no)
         stmt = stmt.order_by(DocumentBlock.slide_no, DocumentBlock.order_index)
         return list(self.session.scalars(stmt))
+
+    def delete_blocks(self, document_id: uuid.UUID) -> int:
+        """Clears any blocks from a prior attempt before a (re-)extraction run."""
+        deleted = (
+            self.session.query(DocumentBlock).filter(DocumentBlock.document_id == document_id).delete()
+        )
+        self.session.flush()
+        return deleted

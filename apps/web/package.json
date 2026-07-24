@@ -7,12 +7,15 @@
     "dev": "vite",
     "dev:all": "vite",
     "dev:extractor": "cmd /c \"cd ..\\.. && .venv\\Scripts\\python.exe -m uvicorn slidevision.extraction.service:app --host 127.0.0.1 --port 5052\"",
+    "dev:api": "cmd /c \"cd ..\\.. && .venv\\Scripts\\python.exe -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000\"",
+    "generate:api-types": "..\\..\\.venv\\Scripts\\python.exe -m apps.api.export_openapi > openapi.json && openapi-typescript openapi.json -o src/api/schema.d.ts && del openapi.json",
     "probe:opencode": "node scripts/probeOpenCodeVision.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
+    "openapi-fetch": "^0.17.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -23,6 +26,7 @@
     "eslint-plugin-react": "^7.37.2",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.16",
+    "openapi-typescript": "^7.13.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "vite": "^6.0.5"

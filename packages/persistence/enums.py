@@ -3,9 +3,9 @@
 Mirrors the shapes of the state-model enums in
 docs/ARCHITECTURE_REVIEW_AND_ROADMAP.md §2.9 (Provenance, Intent,
 ObjectiveStatus, PedagogicalAction) plus a few storage-only status enums
-(§2.10 gives their values inline as SQL comments: DocumentStatus is implied
-by Module 1's "processing status" / "failed" language and is not given
-explicit values anywhere, so it is this module's own judgment call).
+(§2.10 gives their values inline as SQL comments; DocumentStatus values were
+pinned down by the "Document Registry" module prompt's explicit lifecycle:
+uploaded -> extracting -> ready | failed).
 
 Deliberately NOT imported from packages/tutor_core: that package does not
 exist yet (a later module) and, per CLAUDE.md invariant #2, must never
@@ -18,8 +18,8 @@ import enum
 
 
 class DocumentStatus(str, enum.Enum):
-    PENDING = "pending"
-    PROCESSING = "processing"
+    UPLOADED = "uploaded"
+    EXTRACTING = "extracting"
     READY = "ready"
     FAILED = "failed"
 

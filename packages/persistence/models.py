@@ -40,6 +40,13 @@ silently guessed, per CLAUDE.md's "if underspecified, note the call"):
 - `session_reports.session_id` has a UNIQUE constraint (one report per
   session) beyond the four indexes the prompt named explicitly — a direct
   reading of "a report per session", not scope creep.
+- `documents.content_hash` (unique, sha256 of the raw upload) and
+  `.storage_uri` (where apps/api wrote the file under data/uploads/) and
+  `.error` (per-stage failure message) were added by the "Document Registry"
+  module — §2.10's `documents(...)` line doesn't list them, but content-hash
+  idempotency and "on failure persist partial blocks, store per-stage error"
+  are that module's explicit requirements and there's nowhere else to put
+  them. Additive-only migration; nothing existing changed shape.
 """
 
 from __future__ import annotations
@@ -89,7 +96,18 @@ def _created_at() -> Mapped[datetime]:
 
 
 def _pg_enum(py_enum: type, name: str):
-    return Enum(py_enum, name=name, native_enum=False, validate_strings=True)
+    # values_callable is required: SQLAlchemy's Enum, by default, stores the
+    # Python member NAME ("READY"), not `.value` ("ready") — even for (str,
+    # Enum) subclasses. Every enum in enums.py is intentionally lowercase
+    # (matching §2.9/§2.10's own lowercase convention), so without this the
+    # DB would silently store uppercase names instead.
+    return Enum(
+        py_enum,
+        name=name,
+        native_enum=False,
+        validate_strings=True,
+        values_callable=lambda enum_cls: [member.value for member in enum_cls],
+    )
 
 
 class Document(Base):
@@ -100,16 +118,21 @@ class Document(Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     source_filename: Mapped[str] = mapped_column(String(1000), nullable=False)
     mime: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    storage_uri: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[DocumentStatus] = mapped_column(
         _pg_enum(DocumentStatus, "document_status"),
         nullable=False,
-        default=DocumentStatus.PENDING,
+        default=DocumentStatus.UPLOADED,
     )
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
     blocks: Mapped[list["DocumentBlock"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
+
+    __table_args__ = (UniqueConstraint("content_hash", name="uq_documents_content_hash"),)
 
 
 class DocumentBlock(Base):
