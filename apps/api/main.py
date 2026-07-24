@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from apps.api.routers import documents, health
+from apps.api.routers import documents, health, plans
 from apps.api.settings import get_settings
 from slidevision.extraction.office import start_libreoffice_listener, stop_libreoffice_listener
 
@@ -30,3 +30,4 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(documents.router)
+app.include_router(plans.router)

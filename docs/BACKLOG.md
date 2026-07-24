@@ -206,7 +206,14 @@ Deferred items surface here as modules are built. Empty at project start.
   fix client-side). The repair retry already absorbs this — an empty first
   attempt just triggers the same repair path as an invalid one — but it's
   worth knowing this is a real, observed gateway behavior and not a
-  hypothetical.
+  hypothetical. **Confirmed at higher stakes building packages/planbuilder**:
+  on the 40-slide demo deck, 3 of 12 concurrent `generate_objectives` calls
+  failed both the primary *and* repair attempt (empty content twice in a
+  row) in one batch, and one specific unit failed three separate build
+  attempts before succeeding — i.e. double-failure isn't a negligible tail
+  risk at production scale, it happens regularly across a dozen-plus calls.
+  `packages/planbuilder`'s per-unit fault isolation (skip and leave
+  resumable, don't abort the whole job) exists specifically because of this.
 
 - **No secondary-provider fallback.** §2.13 of the roadmap says "2 retries,
   then fall back to secondary provider" — there is only one provider
@@ -231,6 +238,93 @@ Deferred items surface here as modules are built. Empty at project start.
   by `scripts/demo_structured_call.py` to exercise the registry +
   structured-output pipeline end to end. Real prompts (`assess_response`,
   `plan_segment`, ...) belong to the modules that own that pedagogy.
+
+## From "packages/planbuilder" module (unit segmentation + objectives)
+
+- **No `learning_plans.error` column.** `documents` has an explicit `.error`
+  field for failed extraction; `learning_plans` doesn't (§2.10's original
+  column list for `learning_plans` never included one, and this module's
+  own instructions only asked for "stays draft, resumable" — not "records
+  why it stopped"). `run_plan_build_job` logs the exception via
+  `logger.exception(...)` only; there's no way to see *why* a plan is stuck
+  incomplete from the DB alone, only that it is (`GET /plans/{id}` shows
+  units with no objectives, or zero units). Add a column + migration if
+  that visibility gap becomes a real problem.
+
+- **`ObjectiveDraft.is_recall_only` isn't persisted anywhere.**
+  `learning_objectives.low_confidence` already has a reserved meaning ("fewer
+  than 2 anchored ideas", set by the evidence-card/anchoring stage —
+  deferred, not yet built) and repurposing it here would collide with that
+  once anchoring lands. `is_recall_only` is used only in-memory by
+  `filter_recall_only()` to decide what to keep; objectives that survive
+  filtering (including the rare all-recall unit where nothing better
+  exists) are persisted with no trace of which ones were borderline.
+
+- **Evidence cards and span anchoring are not built** (`objective_expected_ideas`,
+  `objective_misconceptions` stay empty) — explicitly out of scope per this
+  module's own instructions ("that is Prompt 7").
+
+- **No `GET /documents/{id}/plans` list endpoint** and no way to see a
+  document's plan-version history from the API — only the two routes this
+  module's instructions named (`POST .../plans`, `GET /plans/{id}`) exist.
+  `PlanRepository.latest_version()` already supports listing internally;
+  exposing it is just a missing route.
+
+- **Plan-build "resumability" is a heuristic, not a stored flag**
+  (`apps/api/jobs/plan_build.py::is_incomplete`): a plan counts as
+  incomplete if it has zero units, or any unit with zero objectives. This
+  is correct for how the job persists incrementally (commit per unit, then
+  per unit's objectives) but would need revisiting if a future module adds
+  a legitimate reason for a fully-built plan to have a unit with
+  deliberately zero objectives.
+
+- **Retrying a genuinely bad plan isn't possible without DB surgery.** If
+  segmentation's one retry (`segment.py::build_units`) still fails
+  (`PartitionError`), the job logs and exits with the plan still at zero
+  units — the *next* `POST /documents/{id}/plans` call will correctly
+  detect it as incomplete and resume it (same plan_id, tries segmentation
+  again from scratch), so in practice this self-heals on retry. No
+  intervention needed, just noting it here since it wasn't obvious from the
+  code alone.
+
+- **No fixture-deck regression corpus for planbuilder** (unlike Module 0.5's
+  10-deck golden corpus) — `tests/fixtures/generate_planbuilder_deck.py`
+  produces exactly one 40-slide synthetic deck for manual/demo verification
+  (`scripts/build_plan_demo.py`), not an automated pytest fixture with
+  golden expected units (LLM output isn't deterministic enough for a golden
+  file the way extraction's pure-code output is). `tests/unit/test_segment_partition.py`
+  covers the partition-validation logic itself, offline, instead.
+
+- **`SEGMENTATION_MAX_TOKENS` (4096) and `OBJECTIVES_MAX_TOKENS` (3072) are
+  empirically-tuned constants, not derived from anything.** The first real
+  40-slide run failed outright at `client.py`'s default `max_tokens=1024` —
+  both the segmentation call and every objectives call were silently
+  truncated to exactly 1024 output tokens (reasoning alone ate the whole
+  budget), which `structured.py`'s repair retry cannot fix since the
+  *repair* attempt hits the identical ceiling. Segmentation was fixed at
+  4096; objectives needed a second bump from 2048 to 3072 after the largest
+  unit in the deck (5 slides) specifically kept failing at 2048 while every
+  smaller unit succeeded first try — suggestive that budget should scale
+  with a unit's slide count rather than being a flat constant, but that's
+  unverified with only one data point. Re-tune (or make it size-adaptive)
+  once this runs against more/larger real decks.
+
+- **Objective generation runs concurrently (`ThreadPoolExecutor`, bounded by
+  `LLM_MAX_CONCURRENCY`) — sequential was measured, not assumed, to miss the
+  3-minute target.** The first successful full build (12 units, sequential,
+  before the concurrency fix) took 367s end to end. Concurrent, the same
+  deck's remaining objectives batches ran in 100s / 73s / 48s across three
+  resumes. Worth knowing if `LLM_MAX_CONCURRENCY` is ever lowered for
+  gateway rate-limit reasons: it directly trades off against this module's
+  own "under 3 minutes" acceptance target.
+
+- **`OpenCode Zen`'s `cost` field in every chat completion response is
+  always the literal string `"0"`**, regardless of actual token usage
+  (checked directly: same request at `max_tokens=50/500/1500` all returned
+  `cost: '0'`) — not real per-call billing, just an unwired placeholder on
+  this gateway. `packages/llm/logging.py` was deliberately left as-is
+  (env-configured `LLM_COST_RATE_*`, `NULL` if unset) rather than trusting
+  it. Re-check if OpenCode Zen ever wires this field up for real.
 
 - **Pre-existing bug found while building this module:** `service.py`'s
   document registry (`upsert_document`, keyed on `file_hash`) hashes the
