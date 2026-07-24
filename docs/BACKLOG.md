@@ -2,6 +2,62 @@
 
 Deferred items surface here as modules are built. Empty at project start.
 
+## From "Database Schema" module (packages/persistence, docker-compose, Alembic)
+
+- **No API routes, job runner, or extraction wiring populate these tables
+  yet.** This module is schema-only per its own instructions ("DO NOT: write
+  any API routes, any LLM code, any business logic"). Module 1's extraction
+  job runner is what will actually call `DocumentRepository`/etc. from real
+  uploads.
+
+- **`documents.status` values (`pending`/`processing`/`ready`/`failed`) are
+  this module's own judgment call**, not given explicitly anywhere in
+  §2.10 (unlike `learning_plans.status` and `sessions.status`, which the
+  roadmap spells out inline). Confirm/adjust once Module 1's job runner
+  defines the actual document lifecycle.
+
+- **No `users` table exists.** `documents.user_id` / `sessions.user_id` are
+  bare, unconstrained UUID columns — Module 1 explicitly lists "multi-user
+  auth" under **Future**, so there's nothing to FK against yet. Add the FK
+  (and decide on cascade behavior for a deleted user) once auth lands.
+
+- **`document_blocks.id` / `document_id` type mismatch with the extraction
+  module's current output is not reconciled.** `packages/persistence` makes
+  `documents.id` a DB-generated UUID (consistent with every other PK in
+  §2.10) and `document_blocks.id` the content-derived hash string
+  `packages/extraction/blocks.py::make_block_id` already produces (to
+  preserve the "stable across re-runs" contract Module 0.5 tested). But
+  `make_block_id` hashes `document_id` as one of its inputs, and extraction
+  currently generates its own hash-based `document_id`, not a UUID (see the
+  existing BACKLOG entry below about `upsert_document` hashing the converted
+  PDF). Module 1's document registry wiring needs to decide how the two
+  reconcile — e.g. pass the DB-issued UUID into extraction as the
+  `document_id` input, rather than letting extraction mint its own.
+
+- **`objective_expected_ideas.block_id` and every cross-aggregate FK from
+  session/turn data back into plan structure use `ON DELETE RESTRICT`**
+  (not `CASCADE`), to stop citations and research data
+  (`turn_events`/`llm_calls`) from silently vanishing if someone deletes a
+  document or plan out from under them. Practical consequence: deleting a
+  `document` that has any `learning_plans` row, or a `learning_plan` that
+  has any `sessions` row, will fail with a FK violation by design — there is
+  no cascade/archive path yet. Module 3's plan-approval/archive flow should
+  decide whether "delete" should even be exposed once a plan has sessions,
+  or whether it should soft-delete (`status=archived`) instead.
+
+- **`objective_misconceptions.code` / `session_objective_states.active_misconception_id`
+  are unconstrained strings, not FKs.** §2.9's `ObjectiveAssessment.misconception_id`
+  reads as a per-objective catalog code (paired with `misconception_novel_text`
+  for not-yet-catalogued ones), not `objective_misconceptions.id`'s UUID PK —
+  and a code is only unique per-objective, not globally, so it isn't
+  cleanly FK-able. Revisit if Module 5/6 need referential integrity here.
+
+- **`plan_edits` audit table (Module 3) not created.** Out of scope for this
+  module — §2.10 doesn't list it, Module 3's spec does.
+
+- **`document_blocks.embedding` (semantic fallback retrieval, §2.18 v1.1
+  extension point) not added.** Explicitly deferred to v1.1 per the roadmap.
+
 ## From Module 0.5 (provenance-tagged Block extraction)
 
 - **Fixture decks are synthetic.** No real lecture deck exists anywhere in

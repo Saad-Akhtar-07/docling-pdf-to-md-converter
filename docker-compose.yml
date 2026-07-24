@@ -1,0 +1,33 @@
+# Local Postgres for SlideVision. Start with:
+#   docker compose up -d
+# Check health with:
+#   docker compose ps
+# (the "healthy" status comes from the healthcheck below, which runs pg_isready
+# inside the container)
+#
+# If you do not have Docker Desktop, install PostgreSQL 16 natively for Windows
+# instead (https://www.postgresql.org/download/windows/), create a database and
+# role matching POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD below via psql or
+# pgAdmin, and point DATABASE_URL in .env.local at localhost:5432 same as this
+# compose file does — nothing else in this repo cares which one you run.
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tutor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tutor}
+      POSTGRES_DB: ${POSTGRES_DB:-tutor}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tutor} -d ${POSTGRES_DB:-tutor}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
