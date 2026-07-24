@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from slidevision.llm import complete
 from slidevision.llm.prompts import load_prompt
 from slidevision.planbuilder.errors import PartitionError
-from slidevision.planbuilder.slides import SlideSummary
+from slidevision.planbuilder.slides import SlideSummary, format_slide_entries
 
 PROMPT_ID = "segment_units"
 PROMPT_VERSION = "v1"
@@ -53,21 +53,11 @@ def _suggested_unit_range(num_slides: int) -> tuple[int, int]:
     return low, high
 
 
-def _format_slides_block(slides: list[SlideSummary]) -> str:
-    parts = []
-    for slide in slides:
-        text = f"Slide {slide.slide_no}: {slide.title}\n{slide.citable_text}"
-        if slide.visual_notes:
-            text += f"\n[AI-generated visual notes, not verbatim source — for context only]: {slide.visual_notes}"
-        parts.append(text)
-    return "\n\n".join(parts)
-
-
 def _build_messages(slides: list[SlideSummary], system_prompt: str) -> list[dict]:
     low, high = _suggested_unit_range(len(slides))
     user_content = (
         f"This deck has {len(slides)} slides. As guidance only (the hard rules above take "
-        f"priority), aim for roughly {low}-{high} units.\n\n{_format_slides_block(slides)}"
+        f"priority), aim for roughly {low}-{high} units.\n\n{format_slide_entries(slides)}"
     )
     return [
         {"role": "system", "content": system_prompt},

@@ -40,6 +40,7 @@ llm = [
 ]
 planbuilder = [
     "pydantic>=2.0",
+    "rapidfuzz>=3.9",
     "slidevision[llm,persistence]",
 ]
 dev = [

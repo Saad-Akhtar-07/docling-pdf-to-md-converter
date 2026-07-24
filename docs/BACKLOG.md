@@ -338,3 +338,63 @@ Deferred items surface here as modules are built. Empty at project start.
   `document_id` param is untouched here to keep this module's diff minimal.
   Point `upsert_document` at the same original-file hash when someone next
   touches the document registry.
+
+## From "evidence-anchoring" module (packages/planbuilder/evidence.py, anchor.py, validate.py)
+
+- **No separate `evidence_cards` table** — matches the existing schema
+  (`learning_objectives` + `objective_expected_ideas` + `objective_misconceptions`,
+  built by the "Database Schema" module before this one). An "evidence card"
+  is represented implicitly as one objective's rows across those two child
+  tables; there was nothing to add.
+
+- **`source_block_ids` (named in §2.6 Stage 4's JSON example) isn't a
+  persisted column.** Trusting the model to list which block ids it used is
+  exactly the kind of unverified claim this module exists to eliminate —
+  it's derived instead, at read time, from the `block_id` on each
+  *anchored* idea (`scripts/build_plan_demo.py`'s report/example-card
+  printer does this). Add a computed property or a view if some future
+  consumer needs it as a first-class field rather than a derived one.
+
+- **Prior-objective context grows without bound across the curriculum.**
+  `evidence.py`'s prompt includes every objective that comes before the
+  current one in unit/objective order, so objective #40 in a 41-objective
+  plan carries ~39 prior statements versus #2's one. This is the most
+  likely cause of the real run's observed slowdown/timeouts concentrated
+  on the last few objectives (see below) — confirmed correlated, not proven
+  causal. Consider windowing to same-unit + immediately-preceding unit(s)
+  only if this gets worse on larger real decks.
+
+- **A real 41-objective run (`scripts/build_plan_demo.py` against the
+  40-slide demo deck) took ~20 minutes of cumulative wall time across
+  several resumes** (one genuine network outage included) even at
+  `LLM_MAX_CONCURRENCY=4` — evidence generation is one LLM call *per
+  objective*, so a real course with more objectives will scale linearly
+  against that concurrency ceiling. The current demo script is a
+  synchronous CLI with no progress-polling API; a real UI-facing build
+  would need `GET /plans/{id}` (already returns partial state, since the
+  job persists incrementally) polled from the frontend rather than a
+  blocking wait.
+
+- **Objectives whose LLM call never succeeds even once are indistinguishable,
+  in the DB, from an objective the evidence stage hasn't reached yet** —
+  both have zero `expected_ideas` and zero `misconceptions`. This is the
+  correct resumability signal (`apps/api/jobs/plan_build.py::is_incomplete`)
+  but means there's no way to tell "never attempted" from "attempted and
+  transport-failed every time" without reading application logs. On the
+  real run, 5/41 objectives fell into this bucket from `LlmRequestError`
+  (read timeout) and `StructuredOutputError` (empty content) failures —
+  not anchoring-quality failures; every idea the model *did* successfully
+  return anchored (118/118, 100%, see the build report). A dedicated
+  failure-count/last-error column would help distinguish these if a plan
+  ever gets stuck failing the same objective repeatedly.
+
+- **The build report's `dropped_ideas` detail resets across resumes**
+  (documented in `apps/api/jobs/plan_build.py::_result_from_persisted`'s
+  docstring) — dropped ideas aren't persisted anywhere, only logged, so a
+  cumulative report after multiple resumes undercounts historical drops.
+  The summary numbers that matter for the acceptance gate (anchored count,
+  `low_confidence`, `zero_ideas`) are unaffected since those come from
+  what's actually persisted.
+
+- **No review UI, no embeddings** — both explicitly out of scope per this
+  module's own instructions.

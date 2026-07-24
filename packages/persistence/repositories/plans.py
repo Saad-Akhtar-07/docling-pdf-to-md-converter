@@ -90,6 +90,31 @@ class PlanRepository:
         self.session.flush()
         return objective
 
+    def get_objective(self, objective_id: uuid.UUID) -> LearningObjective | None:
+        return self.session.get(LearningObjective, objective_id)
+
+    def update_objective(
+        self,
+        objective_id: uuid.UUID,
+        *,
+        low_confidence: bool | None = None,
+        prerequisite_objective_ids: list[uuid.UUID] | None = None,
+    ) -> LearningObjective:
+        """Evidence-card stage (packages/planbuilder/validate.py) sets these
+        after the objective row already exists -- low_confidence depends on
+        how many of its ideas actually anchor, and prerequisite ids depend
+        on resolving the model's picks from a numbered list of prior
+        objectives, both only knowable once evidence generation runs."""
+        objective = self.session.get(LearningObjective, objective_id)
+        if objective is None:
+            raise ValueError(f"no learning_objectives row with id={objective_id}")
+        if low_confidence is not None:
+            objective.low_confidence = low_confidence
+        if prerequisite_objective_ids is not None:
+            objective.prerequisite_objective_ids = prerequisite_objective_ids
+        self.session.flush()
+        return objective
+
     def add_expected_idea(
         self, *, objective_id: uuid.UUID, idea: str, block_id: str, char_start: int, char_end: int
     ) -> ObjectiveExpectedIdea:

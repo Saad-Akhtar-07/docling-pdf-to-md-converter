@@ -7,10 +7,14 @@ segment.py / objectives.py stay testable without a database.
 
 `model_generated` content (vision-model slide descriptions) is kept
 separate from `citable_text` and explicitly labeled when included in a
-prompt — it may inform segmentation/objective wording but, per CLAUDE.md
-invariant #4, nothing may ever anchor a citation to it. Evidence-card
-anchoring is out of scope for this module anyway (deferred), but keeping
-the two texts apart now avoids that mistake being easy to make later.
+prompt — it may inform segmentation/objective/evidence wording but, per
+CLAUDE.md invariant #4, nothing may ever anchor a citation to it
+(packages/planbuilder/anchor.py enforces this as a hard error, not just by
+never showing the model these blocks' ids).
+
+`format_slide_entries` is the one shared prompt-rendering helper used by
+segment.py, objectives.py, and evidence.py, so all three LLM calls describe
+a slide identically.
 """
 
 from __future__ import annotations
@@ -64,3 +68,16 @@ def build_slide_summaries(blocks: list[SourceBlock]) -> list[SlideSummary]:
             )
         )
     return summaries
+
+
+def format_slide_entries(slides: list[SlideSummary]) -> str:
+    """"Slide N: title\\n<citable text>\\n[AI-generated visual notes...]:
+    <text>", one per slide, blank-line separated -- the shared prompt body
+    for segment.py, objectives.py, and evidence.py."""
+    parts = []
+    for slide in slides:
+        text = f"Slide {slide.slide_no}: {slide.title}\n{slide.citable_text}"
+        if slide.visual_notes:
+            text += f"\n[AI-generated visual notes, not verbatim source — for context only]: {slide.visual_notes}"
+        parts.append(text)
+    return "\n\n".join(parts)

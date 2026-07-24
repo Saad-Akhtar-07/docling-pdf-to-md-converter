@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from slidevision.llm import complete
 from slidevision.llm.prompts import load_prompt
-from slidevision.planbuilder.slides import SlideSummary
+from slidevision.planbuilder.slides import SlideSummary, format_slide_entries
 
 PROMPT_ID = "generate_objectives"
 PROMPT_VERSION = "v1"
@@ -84,14 +84,8 @@ def filter_recall_only(objectives: list[ObjectiveDraft]) -> list[ObjectiveDraft]
 
 
 def _format_unit_block(unit_title: str, unit_summary: str, unit_slides: list[SlideSummary]) -> str:
-    lines = [f"Unit: {unit_title}", f"Summary: {unit_summary}", "", "Slides:"]
-    for slide in unit_slides:
-        lines.append(f"Slide {slide.slide_no}: {slide.title}\n{slide.citable_text}")
-        if slide.visual_notes:
-            lines.append(
-                f"[AI-generated visual notes, not verbatim source — for context only]: {slide.visual_notes}"
-            )
-    return "\n\n".join(lines)
+    header = f"Unit: {unit_title}\nSummary: {unit_summary}\n\nSlides:"
+    return f"{header}\n\n{format_slide_entries(unit_slides)}"
 
 
 def build_objectives(

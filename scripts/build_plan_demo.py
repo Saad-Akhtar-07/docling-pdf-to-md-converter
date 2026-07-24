@@ -1,6 +1,7 @@
 """End-to-end acceptance demo for packages/planbuilder (Module 2 slice):
 
-    upload -> extraction -> plan build -> print units/objectives + cost
+    upload -> extraction -> plan build (units, objectives, anchored
+    evidence cards) -> print units/objectives/evidence + build report + cost
 
 Runs the real extraction and plan-build jobs directly (bypassing HTTP, same
 functions apps/api's routers call) against a real Postgres, so this
@@ -21,7 +22,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from apps.api.jobs.extraction import run_extraction_job
 from apps.api.jobs.plan_build import is_incomplete, run_plan_build_job
@@ -90,7 +91,7 @@ def main() -> None:
     print(f"building plan {plan_id} (version {plan_version})...")
     job_started_at = datetime.now(timezone.utc)
     started = time.perf_counter()
-    run_plan_build_job(plan_id)
+    evidence_report = run_plan_build_job(plan_id)
     elapsed_s = time.perf_counter() - started
 
     session = SessionLocal()
@@ -116,7 +117,8 @@ def main() -> None:
             if unit.summary:
                 print(f"    {unit.summary}")
             for objective in objectives:
-                print(f"    - {objective.statement}")
+                flag = " [low_confidence]" if objective.low_confidence else ""
+                print(f"    - {objective.statement}{flag} ({len(objective.expected_ideas)} anchored ideas)")
 
         stmt = (
             select(LlmCall)
@@ -138,9 +140,89 @@ def main() -> None:
         else:
             print("total logged cost: NULL for every call (no LLM_COST_RATE_* configured — never guessed)")
 
+        # --- Evidence-card build report (packages/planbuilder/validate.py) ---
+        print("\n=== Evidence build report ===")
+        if evidence_report is None:
+            print("run_plan_build_job returned None (job failed before/after evidence stage — see logs)")
+        else:
+            for line in evidence_report.summary_lines():
+                print(line)
+
+            dropped = evidence_report.dropped_examples(limit=8)
+            if dropped:
+                print(f"\nsample dropped ideas ({len(dropped)} of {evidence_report.total_dropped} shown):")
+                for objective_statement, idea in dropped:
+                    print(f"  [{idea.reason}] objective={objective_statement!r}")
+                    print(f"      idea={idea.idea!r}")
+                    print(f"      quote={idea.quote!r}")
+
+        # --- SQL invariant checks ---
+        print("\n=== SQL invariant checks ===")
+        null_block_count = session.execute(
+            text("SELECT count(*) FROM objective_expected_ideas WHERE block_id IS NULL")
+        ).scalar_one()
+        print(f"objective_expected_ideas.block_id IS NULL: {null_block_count} -> {'OK' if null_block_count == 0 else 'FAIL'}")
+
+        model_generated_anchor_count = session.execute(
+            text(
+                "SELECT count(*) FROM objective_expected_ideas i "
+                "JOIN document_blocks b ON i.block_id = b.id "
+                "WHERE b.provenance = 'model_generated'"
+            )
+        ).scalar_one()
+        print(
+            f"ideas anchored to a model_generated block: {model_generated_anchor_count} -> "
+            f"{'OK' if model_generated_anchor_count == 0 else 'FAIL'}"
+        )
+
+        round_trip_mismatches = session.execute(
+            text(
+                "SELECT count(*) FROM objective_expected_ideas i "
+                "JOIN document_blocks b ON i.block_id = b.id "
+                "WHERE i.char_start < 0 OR i.char_end > length(b.text) OR i.char_start >= i.char_end"
+            )
+        ).scalar_one()
+        print(
+            f"ideas whose (char_start, char_end) don't fit inside their block's text: {round_trip_mismatches} -> "
+            f"{'OK' if round_trip_mismatches == 0 else 'FAIL'}"
+        )
+
+        # --- Acceptance: >=80% of objectives have >=2 anchored ideas ---
+        all_objectives = [objective for unit in units for objective in unit.objectives]
+        ge2 = sum(1 for objective in all_objectives if len(objective.expected_ideas) >= 2)
+        ratio = ge2 / len(all_objectives) if all_objectives else 0.0
         print("\n=== Acceptance ===")
         print(f"units in [6,15]: {len(units)} -> {'OK' if 6 <= len(units) <= 15 else 'CHECK'}")
         print(f"under 3 minutes: {elapsed_s:.1f}s -> {'OK' if elapsed_s < 180 else 'CHECK'}")
+        print(
+            f"objectives with >=2 anchored ideas: {ge2}/{len(all_objectives)} ({ratio:.0%}) -> "
+            f"{'OK' if ratio >= 0.80 else 'BELOW 80% TARGET'}"
+        )
+
+        # --- 5 example evidence cards, with the actual quoted source text ---
+        blocks_by_id = {block.id: block.text for block in blocks}
+        print("\n=== 5 example evidence cards ===")
+        shown = 0
+        for unit in units:
+            for objective in sorted(unit.objectives, key=lambda o: o.order_index):
+                if not objective.expected_ideas or shown >= 5:
+                    continue
+                shown += 1
+                print(f"\n--- Example {shown}: {objective.statement} ---")
+                for idea in sorted(objective.expected_ideas, key=lambda i: i.idea):
+                    block_text = blocks_by_id.get(idea.block_id, "")
+                    quoted = block_text[idea.char_start : idea.char_end]
+                    print(f"  idea: {idea.idea}")
+                    print(f"    anchored quote (block {idea.block_id}, chars {idea.char_start}-{idea.char_end}):")
+                    print(f"    {quoted!r}")
+                if objective.misconceptions:
+                    print("  misconceptions:")
+                    for m in objective.misconceptions:
+                        print(f"    - [{m.code}] {m.text}")
+                if objective.prerequisite_objective_ids:
+                    print(f"  prerequisites: {[str(pid) for pid in objective.prerequisite_objective_ids]}")
+            if shown >= 5:
+                break
     finally:
         session.close()
 
