@@ -72,6 +72,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/documents/{document_id}/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Build Plan */
+        post: operations["build_plan_documents__document_id__plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Plan */
+        get: operations["get_plan_plans__plan_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/objectives/{objective_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Objective */
+        delete: operations["delete_objective_objectives__objective_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Objective */
+        patch: operations["update_objective_objectives__objective_id__patch"];
+        trace?: never;
+    };
+    "/plans/{plan_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Plan */
+        post: operations["approve_plan_plans__plan_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plans/{plan_id}/edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Plan Edits */
+        get: operations["get_plan_edits_plans__plan_id__edits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -152,16 +238,191 @@ export interface components {
          * @enum {string}
          */
         DocumentStatus: "uploaded" | "extracting" | "ready" | "failed";
+        /**
+         * ExpectedIdeaIn
+         * @description `id` present + matching an existing row -> edit in place (this is how
+         *     manual re-anchoring changes block_id/char_start/char_end); `id` absent ->
+         *     insert a new idea. Any existing idea whose id isn't included in the
+         *     PATCH's `expected_ideas` list is deleted -- see
+         *     PlanRepository.replace_expected_ideas.
+         */
+        ExpectedIdeaIn: {
+            /** Id */
+            id?: string | null;
+            /** Idea */
+            idea: string;
+            /** Block Id */
+            block_id: string;
+            /** Char Start */
+            char_start: number;
+            /** Char End */
+            char_end: number;
+        };
+        /** ExpectedIdeaOut */
+        ExpectedIdeaOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Idea */
+            idea: string;
+            /** Block Id */
+            block_id: string;
+            /** Char Start */
+            char_start: number;
+            /** Char End */
+            char_end: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** MisconceptionOut */
+        MisconceptionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Text */
+            text: string;
+        };
+        /** ObjectiveOut */
+        ObjectiveOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Statement */
+            statement: string;
+            /** Order Index */
+            order_index: number;
+            /** Low Confidence */
+            low_confidence: boolean;
+            /** Reviewed */
+            reviewed: boolean;
+            /** Expected Ideas */
+            expected_ideas: components["schemas"]["ExpectedIdeaOut"][];
+            /** Misconceptions */
+            misconceptions: components["schemas"]["MisconceptionOut"][];
+        };
+        /** ObjectivePatch */
+        ObjectivePatch: {
+            /** Statement */
+            statement?: string | null;
+            /** Reviewed */
+            reviewed?: boolean | null;
+            /** Expected Ideas */
+            expected_ideas?: components["schemas"]["ExpectedIdeaIn"][] | null;
+        };
+        /** PlanBuildResponse */
+        PlanBuildResponse: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /**
+             * Plan Id
+             * Format: uuid
+             */
+            plan_id: string;
+            status: components["schemas"]["PlanStatus"];
+        };
+        /**
+         * PlanEditAction
+         * @enum {string}
+         */
+        PlanEditAction: "update" | "delete" | "approve";
+        /** PlanEditOut */
+        PlanEditOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Plan Id
+             * Format: uuid
+             */
+            plan_id: string;
+            /** Objective Id */
+            objective_id: string | null;
+            action: components["schemas"]["PlanEditAction"];
+            /** Before */
+            before: {
+                [key: string]: unknown;
+            } | null;
+            /** After */
+            after: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** PlanOut */
+        PlanOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Version */
+            version: number;
+            status: components["schemas"]["PlanStatus"];
+            /** Builder Prompt Version */
+            builder_prompt_version: string | null;
+            /** Model */
+            model: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Units */
+            units: components["schemas"]["UnitOut"][];
+        };
+        /**
+         * PlanStatus
+         * @enum {string}
+         */
+        PlanStatus: "draft" | "approved" | "archived";
         /**
          * Provenance
          * @enum {string}
          */
         Provenance: "verbatim" | "ocr" | "model_generated";
+        /** UnitOut */
+        UnitOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Order Index */
+            order_index: number;
+            /** Summary */
+            summary: string | null;
+            /** Slide Ids */
+            slide_ids: number[];
+            /** Objectives */
+            objectives: components["schemas"]["ObjectiveOut"][];
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -290,6 +551,194 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentBlocksResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    build_plan_documents__document_id__plans_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanBuildResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_plans__plan_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_objective_objectives__objective_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                objective_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_objective_objectives__objective_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                objective_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ObjectivePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObjectiveOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_plan_plans__plan_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_edits_plans__plan_id__edits_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanEditOut"][];
                 };
             };
             /** @description Validation Error */

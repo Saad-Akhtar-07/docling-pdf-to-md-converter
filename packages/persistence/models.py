@@ -77,6 +77,7 @@ from slidevision.persistence.enums import (
     Intent,
     ObjectiveStatus,
     PedagogicalAction,
+    PlanEditAction,
     PlanStatus,
     Provenance,
     SessionStatus,
@@ -209,6 +210,7 @@ class LearningObjective(Base):
     statement: Mapped[str] = mapped_column(Text, nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
     low_confidence: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reviewed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     prerequisite_objective_ids: Mapped[list[uuid.UUID]] = mapped_column(
         ARRAY(UUID(as_uuid=True)), nullable=False, default=list
     )
@@ -254,6 +256,29 @@ class ObjectiveMisconception(Base):
     objective: Mapped["LearningObjective"] = relationship(back_populates="misconceptions")
 
     __table_args__ = (UniqueConstraint("objective_id", "code", name="uq_objective_misconceptions_objective_code"),)
+
+
+class PlanEdit(Base):
+    """Module 3's audit trail: one row per reviewer mutation (objective edit,
+    objective delete, plan approve). `objective_id` is a plain UUID with no FK
+    — deleting an objective (this module's own DELETE endpoint) must not take
+    its own audit history down with it, matching the `active_misconception_id`
+    precedent in this file for "historical reference outlives the row it
+    pointed at"."""
+
+    __tablename__ = "plan_edits"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("learning_plans.id", ondelete="CASCADE"), nullable=False
+    )
+    objective_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    action: Mapped[PlanEditAction] = mapped_column(_pg_enum(PlanEditAction, "plan_edit_action"), nullable=False)
+    before: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    after: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (Index("ix_plan_edits_plan_created", "plan_id", "created_at"),)
 
 
 class Session(Base):

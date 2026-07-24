@@ -46,3 +46,52 @@ reached via the Vite proxy, same as before).
 design (no LLM library dependency in the extraction layer); `OPENCODE_VISION_NODE_HELPER`'s
 default path now resolves relative to the package file itself rather than process cwd,
 since the package can now be imported/run from anywhere.
+
+## 2026-07-24 — Plan Review Interface (Module 3)
+
+**Module 2 quality metric: 5 edits on the 41-objective networking_101 fixture plan.**
+Reviewed the real 12-unit/41-objective demo plan (`scripts/build_plan_demo.py`'s
+output, `plan_id=d3b91bca-9752-4429-ab7f-131f7ee7478e`) end-to-end through the live
+API (the same requests `apps/web`'s PlanReviewPage issues): 4 objective statements
+in the "Application Layer Services" unit were missing the "Student can..." phrasing
+every other objective in the plan uses (a real generation inconsistency, not a
+planted example) and were corrected; 1 expected idea was re-anchored from an entire
+sentence down to its specific supporting clause (`"Networks let users share files,
+printers, and internet access..."` narrowed to `"share files, printers, and
+internet access"`) to demonstrate the manual anchor-correction path. All 41
+objectives came back `low_confidence=false` (consistent with the "118/118 ideas
+anchored" figure already recorded in docs/BACKLOG.md's planbuilder section), so no
+objective needed the reviewed-flag gate exercised on real content — that path is
+covered instead by `tests/integration/test_plan_approval.py::test_reviewed_flag_persists`.
+The plan was then approved; a subsequent edit attempt correctly returned 409, and
+`GET /plans/{id}/edits` shows exactly 6 rows (5 `update` + 1 `approve`) — the whole
+review pass is recoverable from `plan_edits`. Frontend verification was via
+type-check (`tsc --noEmit`), lint, and a production build (`vite build`), not a
+live browser session — no browser-automation tool is available in this
+environment, so the click-through itself (as opposed to the API path it calls)
+wasn't manually exercised.
+
+**`plan_edits.objective_id` has no foreign key**, unlike every other
+plan/objective-scoped table in `packages/persistence/models.py`. Deleting an
+objective (this module's own DELETE endpoint) must not take its own audit
+history down with it — an FK with `ON DELETE CASCADE` would do exactly that,
+and `ON DELETE SET NULL` would still lose which objective a surviving `update`
+row referred to. Left as a plain UUID, the same choice already made for
+`session_objective_states.active_misconception_id`.
+
+**The draft/approved-immutability guard lives in `PlanRepository`, not just the
+router**, per CLAUDE.md invariant #5's spirit and this module's explicit
+instruction ("Enforce in the repository layer, not just the router"). Every
+mutating method (`edit_objective`, `delete_objective`, `replace_expected_ideas`,
+`approve_plan`) re-checks the parent plan's status itself and raises
+`PlanNotEditableError` (new: `packages/persistence/errors.py`), which
+`apps/api/routers/plans.py` maps to 409. A future caller that bypasses the
+router (a script, a background job) still can't mutate an approved plan.
+
+**The reviewed-flag approval gate (disable Approve until every low_confidence
+objective is reviewed) is enforced only in `apps/web/src/pages/PlanReviewPage.jsx`,
+not in `POST /plans/{id}/approve`.** The prompt phrased this as a button
+behavior ("Approve button, disabled until...") rather than an API-level
+invariant, unlike the approved-plan-rejects-edits rule which was explicitly
+called out as repository-enforced. Recorded in docs/BACKLOG.md as a
+call worth revisiting if it should become a hard server-side rule.

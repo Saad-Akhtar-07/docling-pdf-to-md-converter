@@ -60,6 +60,12 @@ class ObjectiveStatus(str, enum.Enum):
     SKIPPED = "skipped"
 
 
+class PlanEditAction(str, enum.Enum):
+    UPDATE = "update"
+    DELETE = "delete"
+    APPROVE = "approve"
+
+
 class PedagogicalAction(str, enum.Enum):
     PROBE = "probe"
     HINT = "hint"

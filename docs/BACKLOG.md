@@ -398,3 +398,48 @@ Deferred items surface here as modules are built. Empty at project start.
 
 - **No review UI, no embeddings** — both explicitly out of scope per this
   module's own instructions.
+
+## From "Plan Review Interface" module (Module 3: apps/api PATCH/DELETE
+objectives, POST approve, apps/web PlanReviewPage)
+
+- **The reviewed-flag approval gate is a frontend affordance only, not
+  enforced server-side.** The prompt's acceptance criterion ("Approve button
+  disabled until every low_confidence objective has been reviewed") reads as
+  a UI behavior, not an API invariant — `POST /plans/{id}/approve` approves a
+  draft plan regardless of any objective's `reviewed` value. A determined
+  caller (a second tab, a direct API call) can bypass the frontend gate. Add
+  a server-side check in `PlanRepository.approve_plan` if this ever needs to
+  be a hard invariant rather than a reviewer nudge.
+
+- **No `PlanEditOut` UI** — `GET /plans/{id}/edits` exists (used for
+  verification and available for a future audit-trail view) but
+  `apps/web/src/pages/PlanReviewPage.jsx` doesn't render it. Nothing in this
+  module's prompt asked for an edit-history view in the UI itself.
+
+- **Misconceptions are read-only in the review UI.** The prompt's PATCH
+  spec only names "add/edit/remove expected ideas" — `objective_misconceptions`
+  rows are displayed nowhere in `PlanReviewPage` (not fetched into
+  `ObjectiveOut.misconceptions` display) and have no edit path. They still
+  cascade-delete correctly when an objective is deleted (DB `ON DELETE
+  CASCADE`, exercised by `test_delete_objective_cascades_ideas_and_misconceptions`).
+
+- **Adding a brand-new expected idea requires a source-panel text selection**
+  (`SourcePanel.jsx`'s "Add as new idea" flow) — there is no "add idea with no
+  anchor yet" affordance, since every `objective_expected_ideas` row has a
+  `NOT NULL` `block_id`/`char_start`/`char_end` (DB invariant #4: evidence
+  must anchor to a real span). This matches the module's own framing of
+  manual re-anchoring as "the highest-value interaction," not a gap.
+
+- **No optimistic UI / no per-field save indicator.** Every mutation
+  (statement blur, reviewed toggle, idea add/edit/remove, delete, approve)
+  round-trips through `PATCH`/`DELETE`/`POST` and then a full `GET
+  /plans/{id}` refetch (`PlanReviewPage.jsx::reload`) before the UI updates —
+  simple and correct, but means each edit has a visible network round-trip
+  rather than an instant local update. Fine at single-reviewer, 41-objective
+  scale; revisit if plans grow much larger or latency becomes noticeable.
+
+- **No dedicated route library** — `/plans/{id}/review` is parsed directly
+  from `window.location.pathname` in `App.jsx` (`parsePlanReviewRoute`)
+  rather than via `react-router-dom`, since the whole app has exactly one
+  real URL route. Revisit (add a router) if a second real route is ever
+  needed — e.g. Module 4's session runtime page.

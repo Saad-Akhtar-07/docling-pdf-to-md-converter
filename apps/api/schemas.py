@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from slidevision.persistence.enums import DocumentStatus, PlanStatus, Provenance
+from slidevision.persistence.enums import DocumentStatus, PlanEditAction, PlanStatus, Provenance
 
 
 class DocumentCreateResponse(BaseModel):
@@ -50,6 +51,24 @@ class DocumentBlocksResponse(BaseModel):
     blocks: list[BlockOut]
 
 
+class ExpectedIdeaOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    idea: str
+    block_id: str
+    char_start: int
+    char_end: int
+
+
+class MisconceptionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    code: str
+    text: str
+
+
 class ObjectiveOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -57,6 +76,29 @@ class ObjectiveOut(BaseModel):
     statement: str
     order_index: int
     low_confidence: bool
+    reviewed: bool
+    expected_ideas: list[ExpectedIdeaOut]
+    misconceptions: list[MisconceptionOut]
+
+
+class ExpectedIdeaIn(BaseModel):
+    """`id` present + matching an existing row -> edit in place (this is how
+    manual re-anchoring changes block_id/char_start/char_end); `id` absent ->
+    insert a new idea. Any existing idea whose id isn't included in the
+    PATCH's `expected_ideas` list is deleted -- see
+    PlanRepository.replace_expected_ideas."""
+
+    id: uuid.UUID | None = None
+    idea: str
+    block_id: str
+    char_start: int
+    char_end: int
+
+
+class ObjectivePatch(BaseModel):
+    statement: str | None = None
+    reviewed: bool | None = None
+    expected_ideas: list[ExpectedIdeaIn] | None = None
 
 
 class UnitOut(BaseModel):
@@ -87,3 +129,15 @@ class PlanBuildResponse(BaseModel):
     job_id: uuid.UUID
     plan_id: uuid.UUID
     status: PlanStatus
+
+
+class PlanEditOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    plan_id: uuid.UUID
+    objective_id: uuid.UUID | None
+    action: PlanEditAction
+    before: dict[str, Any] | None
+    after: dict[str, Any] | None
+    created_at: datetime
